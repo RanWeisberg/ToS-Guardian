@@ -1,0 +1,19 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Node (in case the API/GUI ends up in JS)
+node_modules/
+.vercel/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.env
