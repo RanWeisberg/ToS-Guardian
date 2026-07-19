@@ -1,5 +1,10 @@
 # Secrets
 .env.local
+.env
+
+# Next.js build output
+.next/
+next-env.d.ts
 
 # Python
 __pycache__/
@@ -8,7 +13,7 @@ __pycache__/
 venv/
 env/
 
-# Node (in case the API/GUI ends up in JS)
+# Node
 node_modules/
 .vercel/
 
@@ -16,4 +21,3 @@ node_modules/
 .DS_Store
 .idea/
 .vscode/
-.env.local
