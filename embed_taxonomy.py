@@ -7,7 +7,7 @@ Pinecone. Idempotent: re-running overwrites cleanly.
 
     python scripts/embed_taxonomy.py
 
-Requires a filled .env (LLMOD_API_KEY, LLMOD_BASE_URL, PINECONE_API_KEY).
+Requires a filled .env.local (LLMOD_API_KEY, LLMOD_BASE_URL, PINECONE_API_KEY).
 """
 
 import json
@@ -47,7 +47,7 @@ def embed(client: OpenAI, texts: list[str]) -> list[list[float]]:
         resp = client.embeddings.create(model=config.LLMOD_EMBED_MODEL, input=texts)
     except Exception as e:  # noqa: BLE001 — we want the raw error surfaced
         print("\nEMBEDDING CALL FAILED. Raw error below.")
-        print("Confirm LLMOD_BASE_URL and LLMOD_EMBED_MODEL in your .env against")
+        print("Confirm LLMOD_BASE_URL and LLMOD_EMBED_MODEL in your .env.local against")
         print("the LLMod.ai dashboard (is the embeddings endpoint OpenAI-compatible?).\n")
         raise SystemExit(e)
     # Preserve input order.

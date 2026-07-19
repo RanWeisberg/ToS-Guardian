@@ -75,7 +75,7 @@ if (missing.length > 0) {
   throw new Error(
     "Missing required environment variables: " +
       missing.join(", ") +
-      "\nFill them in your .env / .env.local (see .env.local.example).",
+      "\nFill them in your .env.local / .env.local.local (see .env.local.local.example).",
   );
 }
 

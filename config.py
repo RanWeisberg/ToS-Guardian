@@ -13,7 +13,7 @@ Usage:
 import os
 from dotenv import load_dotenv
 
-load_dotenv()  # reads .env in the project root
+load_dotenv()  # reads .env.local in the project root
 
 # Sentinel: a variable that is present but still empty/placeholder counts as unset.
 _PLACEHOLDERS = {"", "your-key-here", "changeme"}
@@ -56,7 +56,7 @@ if _missing:
     raise RuntimeError(
         "Missing required environment variables: "
         + ", ".join(_missing)
-        + "\nFill them in your .env file (see .env.example)."
+        + "\nFill them in your .env.local file (see .env.local.example)."
     )
 
 
