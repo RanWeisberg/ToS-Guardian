@@ -1,18 +1,15 @@
 /**
  * app/api/execute/route.ts — the single core entry point (CLAUDE.md §4).
  *
- * PHASE 2 STUB. This proves the envelope + tracer end-to-end: parse { prompt },
- * create a Tracer, record one placeholder Step, and return a valid
- * ExecuteResponse. Real eight-module orchestration arrives in Phase 4.
+ * A thin adapter over the pure core: validate { prompt }, call runAgent, and map
+ * its { response, steps } into the exact ExecuteResponse envelope. All eight-module
+ * orchestration lives in lib/orchestrator.ts; this route owns only the HTTP shape.
+ * The mail/cron layer will call runAgent the same way and is NOT part of the trace.
  *
- * The core is pure: input → { response, steps }. The mail/cron layer will be a
- * thin adapter over this same handler and is NOT part of the steps trace.
- *
- * These stores/SDKs (added later) require the Node runtime, not Edge.
+ * Stores/SDKs used downstream require the Node runtime, not Edge.
  */
 
-import { MODULES } from "@/lib/modules";
-import { Tracer } from "@/lib/trace";
+import { runAgent } from "@/lib/orchestrator";
 import type { ExecuteRequest, ExecuteResponse } from "@/lib/contracts";
 
 export const runtime = "nodejs";
@@ -32,23 +29,13 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json(bad, { status: 400 });
     }
 
-    const tracer = new Tracer();
-
-    // Placeholder Step — replaced by real module calls in Phase 4.
-    tracer.add({
-      module: MODULES.IntakeRouter,
-      prompt: {
-        system_prompt: "phase 2 stub",
-        user_prompt: prompt,
-      },
-      response: { note: "phase 2 stub" },
-    });
+    const { response, steps } = await runAgent(prompt);
 
     const ok: ExecuteResponse = {
       status: "ok",
       error: null,
-      response: "stub",
-      steps: tracer.steps,
+      response,
+      steps,
     };
     return Response.json(ok);
   } catch (err) {

@@ -105,9 +105,13 @@ export async function runCaseClassifier(
       for (const chosen of sel.cases) {
         const cand = map.get(chosen.case_id);
         if (!cand) {
-          throw new Error(
-            `CaseClassifier: clause "${clause.id}" was mapped to case_id "${chosen.case_id}", which is not among its candidates ${JSON.stringify([...map.keys()])} (no invented cases).`,
+          // Not among this clause's Pinecone candidates → skip it. This upholds the
+          // "never invent a case_id" guarantee (a skipped entry is dropped, never
+          // fabricated) without aborting the whole run over one bad entry.
+          console.warn(
+            `CaseClassifier: clause "${clause.id}" — skipping case_id "${chosen.case_id}", not among its candidates ${JSON.stringify([...map.keys()])} (no invented cases).`,
           );
+          continue;
         }
         cases.push({
           case_id: cand.case_id,
@@ -206,23 +210,44 @@ function parseSelections(raw: string, expectedCount: number): Selection[] {
     if (!Array.isArray(rawCases)) {
       throw new Error(`CaseClassifier: clause "${clause_id}" has a non-array "cases".`);
     }
-    const cases = rawCases.map((c) => {
+    // Skip (don't throw on) individual malformed case entries — real model output
+    // occasionally emits a junk entry, and one bad case must not abort the whole run.
+    // A clause may legitimately end up with zero matched cases. Only the surrounding
+    // JSON/array shape is fatal (validated above). Candidate-membership is enforced
+    // in the reconstruction step, which likewise skips (never invents) unknown ids.
+    const cases: { case_id: string; confidence: number }[] = [];
+    for (const c of rawCases) {
       if (typeof c !== "object" || c === null || Array.isArray(c)) {
-        throw new Error(`CaseClassifier: clause "${clause_id}" has a non-object case entry.`);
+        console.warn(
+          `CaseClassifier: clause "${clause_id}" — skipping a non-object case entry: ${JSON.stringify(c)}`,
+        );
+        continue;
       }
       const co = c as Record<string, unknown>;
-      const case_id = co.case_id;
-      if (typeof case_id !== "string" || case_id.trim().length === 0) {
-        throw new Error(`CaseClassifier: clause "${clause_id}" has a case with a missing "case_id".`);
+      // ToS;DR case_ids are numeric-looking, so the model may echo them as JSON
+      // numbers rather than strings — coerce to string (as VersionDiffer does)
+      // instead of dropping an otherwise well-formed entry.
+      const case_id =
+        typeof co.case_id === "string"
+          ? co.case_id.trim()
+          : typeof co.case_id === "number" && Number.isFinite(co.case_id)
+            ? String(co.case_id)
+            : "";
+      if (case_id.length === 0) {
+        console.warn(
+          `CaseClassifier: clause "${clause_id}" — skipping a case entry with a missing/empty "case_id".`,
+        );
+        continue;
       }
       const confidence = typeof co.confidence === "number" ? co.confidence : Number(co.confidence);
       if (!Number.isFinite(confidence)) {
-        throw new Error(
-          `CaseClassifier: clause "${clause_id}", case "${case_id}" has a non-numeric "confidence".`,
+        console.warn(
+          `CaseClassifier: clause "${clause_id}", case "${case_id}" — skipping: non-numeric "confidence".`,
         );
+        continue;
       }
-      return { case_id: case_id.trim(), confidence: clamp01(confidence) };
-    });
+      cases.push({ case_id, confidence: clamp01(confidence) });
+    }
     return { clause_id: clause_id.trim(), cases };
   });
 }
