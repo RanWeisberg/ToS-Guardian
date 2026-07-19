@@ -13,7 +13,7 @@ Usage:
 import os
 from dotenv import load_dotenv
 
-load_dotenv()  # reads .env.local in the project root
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.local"))
 
 # Sentinel: a variable that is present but still empty/placeholder counts as unset.
 _PLACEHOLDERS = {"", "your-key-here", "changeme"}
