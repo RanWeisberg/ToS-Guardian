@@ -48,3 +48,17 @@ export interface Preference {
   source: "default" | "user";
   updated_at: string;
 }
+
+/**
+ * A row of `mock_inbox` — the Phase 6a mock mailbox (see supabase/mock_inbox.sql).
+ * Backs the mock MailSource (lib/mail/mockSource.ts); `processed` is the dedup
+ * ledger that keeps re-polling idempotent.
+ */
+export interface MockInboxRow {
+  id: string;
+  service_hint: string | null;
+  subject: string;
+  body: string;
+  received_at: string;
+  processed: boolean;
+}

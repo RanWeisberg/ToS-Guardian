@@ -42,6 +42,15 @@ export const SUPABASE_URL = get("SUPABASE_URL");
 export const SUPABASE_SERVICE_ROLE_KEY = get("SUPABASE_SERVICE_ROLE_KEY");
 export const SUPABASE_ANON_KEY = get("SUPABASE_ANON_KEY");
 
+// --- Gmail (monitoring intake, Phase 6b) ---
+// Optional: when GMAIL_REFRESH_TOKEN is present the mail layer uses the real
+// Gmail source; otherwise it falls back to the mock. Not in REQUIRED — the app
+// (and the graded paste path) work fine without a mailbox configured.
+export const GMAIL_CLIENT_ID = get("GMAIL_CLIENT_ID");
+export const GMAIL_CLIENT_SECRET = get("GMAIL_CLIENT_SECRET");
+export const GMAIL_REFRESH_TOKEN = get("GMAIL_REFRESH_TOKEN");
+export const GMAIL_USER = get("GMAIL_USER");
+
 /**
  * Every variable this module knows about, keyed by name. Used only to derive
  * presence (booleans) — never to expose values.
@@ -58,6 +67,10 @@ const ALL_VARS: Record<string, string | undefined> = {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_ANON_KEY,
+  GMAIL_CLIENT_ID,
+  GMAIL_CLIENT_SECRET,
+  GMAIL_REFRESH_TOKEN,
+  GMAIL_USER,
 };
 
 // Required to do anything in Phase 0 (connectivity diagnostic).
