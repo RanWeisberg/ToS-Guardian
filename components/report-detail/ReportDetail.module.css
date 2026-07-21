@@ -358,6 +358,29 @@
   max-width: 560px;
 }
 
+.submitBtn {
+  display: block;
+  width: 100%;
+  background: #0f9e8f;
+  color: #fff;
+  border: none;
+  border-radius: 15px;
+  padding: 17px;
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  box-shadow: 0 6px 18px rgba(15, 158, 143, 0.3);
+  transition: background 0.18s, transform 0.18s;
+  text-align: center;
+  cursor: pointer;
+}
+
+.submitBtn:hover {
+  background: #0c8578;
+  transform: translateY(-1px);
+}
+
 .closingBtn {
   display: block;
   width: 100%;

@@ -13,7 +13,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "@/lib/config";
-import type { ReportPoint } from "@/lib/contracts";
+import type { ReportPoint, PreferenceUpdate } from "@/lib/contracts";
 
 /**
  * Single shared client. Server-only usage, so we disable session persistence
@@ -134,4 +134,89 @@ export async function getReportById(id: string): Promise<ReportRow | null> {
     throw new Error(`db.getReportById: failed to read report "${id}": ${error.message}`);
   }
   return (data as ReportRow | null) ?? null;
+}
+
+/** Flip a report's lifecycle status (e.g. to 'answered' once feedback is complete). */
+export async function setReportStatus(id: string, status: ReportStatus): Promise<void> {
+  const { error } = await supabase.from(REPORTS_TABLE).update({ status }).eq("id", id);
+  if (error) {
+    throw new Error(
+      `db.setReportStatus: failed to set report "${id}" to "${status}": ${error.message}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// preferences — user-preference writes/reads (Phase 7 Step D)
+// ---------------------------------------------------------------------------
+
+const PREFERENCES_TABLE = "preferences";
+
+/** The single source of truth for WRITING user preferences: upsert each update
+ *  onto the (case_id, category) key with source='user' and updated_at=now().
+ *  A no-op for an empty list. Throws loudly on failure (CLAUDE.md §7). */
+export async function upsertPreferences(updates: PreferenceUpdate[]): Promise<void> {
+  if (updates.length === 0) return;
+  const rows = updates.map((u) => ({
+    case_id: u.case_id,
+    category: u.category,
+    stance: u.stance,
+    source: "user" as const,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase
+    .from(PREFERENCES_TABLE)
+    .upsert(rows, { onConflict: "case_id,category" });
+  if (error) {
+    throw new Error(
+      `db.upsertPreferences: failed to upsert ${rows.length} preference(s): ${error.message}`,
+    );
+  }
+}
+
+/** Of the given case_ids, which already carry a source='user' preference at
+ *  `category`. Used to decide whether a report has been fully answered. */
+export async function getUserPreferenceCaseIds(
+  caseIds: string[],
+  category: string,
+): Promise<string[]> {
+  if (caseIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from(PREFERENCES_TABLE)
+    .select("case_id")
+    .eq("category", category)
+    .eq("source", "user")
+    .in("case_id", caseIds);
+  if (error) {
+    throw new Error(
+      `db.getUserPreferenceCaseIds: failed to read user preferences: ${error.message}`,
+    );
+  }
+  return (data ?? []).map((r) => r.case_id as string);
+}
+
+/** The user's already-saved stances for the given case_ids at `category`, as a
+ *  { case_id -> stance } map (source='user' rows only). Empty input → empty map
+ *  (no query). The value type is Preference["stance"] — i.e. FeedbackStance
+ *  ("care" | "dont_care") — expressed here without importing feedback.ts to
+ *  avoid a circular import. */
+export async function getSavedStances(
+  caseIds: string[],
+  category: string,
+): Promise<Record<string, Preference["stance"]>> {
+  if (caseIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from(PREFERENCES_TABLE)
+    .select("case_id, stance")
+    .eq("category", category)
+    .eq("source", "user")
+    .in("case_id", caseIds);
+  if (error) {
+    throw new Error(`db.getSavedStances: failed to read saved stances: ${error.message}`);
+  }
+  const map: Record<string, Preference["stance"]> = {};
+  for (const row of data ?? []) {
+    map[row.case_id as string] = row.stance as Preference["stance"];
+  }
+  return map;
 }

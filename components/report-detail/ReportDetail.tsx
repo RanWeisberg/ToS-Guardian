@@ -9,10 +9,12 @@
  * matters to the user, plus a per-point care/don't-care feedback control.
  *
  * Presentational. It renders typed props and is now fed REAL persisted data by
- * /report/[id] (Phase 7 Step C), with the sample data kept only for the /report
- * preview. The per-point feedback control is still display-only — the
- * feedback-writing (StateWriter) path is wired in a later step. It intentionally
- * imports the *real* backend contract shapes (no invented field names):
+ * /report/[id] (Phase 7 Step C). Per-point care/don't-care selections live in
+ * LOCAL state (initialized from the `feedback` prop, so a later chunk can
+ * pre-fill answered points); a Submit control hands the chosen stances to the
+ * parent via `onSubmitFeedback`, which owns the network call (Phase 7 Step D).
+ * This component does NOT fetch. It imports the *real* backend contract shapes
+ * (no invented field names):
  *   - findings are `MaterialFinding[]` exactly as MaterialityJudge/ReportComposer
  *     produce them (lib/contracts.ts).
  *   - feedback stance reuses `Preference["stance"]` ("care" | "dont_care"),
@@ -22,6 +24,7 @@
  * `steps` trace elsewhere, never on this screen.
  */
 
+import { useState } from "react";
 import type { Classification, MaterialFinding } from "@/lib/contracts";
 import type { Preference } from "@/lib/db";
 import styles from "./ReportDetail.module.css";
@@ -37,8 +40,9 @@ export interface ReportDetailProps {
   /** The material findings, exactly as the backend produces them. */
   findings: MaterialFinding[];
   /**
-   * UI-local per-point feedback, keyed by `MaterialFinding.case_id`. Absent
-   * entries render as "no take yet". Not yet persisted — wiring lands later.
+   * Initial per-point feedback, keyed by `MaterialFinding.case_id`. Seeds the
+   * component's local selection state (e.g. to pre-fill already-answered points).
+   * Absent entries start with no take chosen.
    */
   feedback?: Record<string, FeedbackStance>;
   /** Human phrasing for when the agent reviewed this (e.g. "just now"). */
@@ -46,8 +50,11 @@ export interface ReportDetailProps {
   /** When set, the agreement was very long and only its first portion was
    *  analyzed; shown as a notice at the top of the report. */
   truncationNotice?: string | null;
-  /** Optional callbacks; presentational default is a no-op. */
+  /** Fired on each point selection (optional; local state is the source of truth). */
   onFeedback?: (caseId: string, stance: FeedbackStance) => void;
+  /** Fired on Submit with ONLY the points the user actually chose. The parent
+   *  owns the network call. */
+  onSubmitFeedback?: (stances: Record<string, FeedbackStance>) => void;
   onBack?: () => void;
   onDone?: () => void;
 }
@@ -83,10 +90,28 @@ export default function ReportDetail({
   reviewedLabel = "just now",
   truncationNotice = null,
   onFeedback,
+  onSubmitFeedback,
   onBack,
   onDone,
 }: ReportDetailProps) {
   const count = findings.length;
+
+  // Per-point selections live locally, seeded from the `feedback` prop.
+  const [stances, setStances] = useState<Record<string, FeedbackStance>>(feedback);
+
+  function choose(caseId: string, stance: FeedbackStance) {
+    setStances((prev) => ({ ...prev, [caseId]: stance }));
+    onFeedback?.(caseId, stance);
+  }
+
+  function submit() {
+    // Hand the parent ONLY the points the user actually chose (skip unset).
+    const chosen: Record<string, FeedbackStance> = {};
+    for (const [caseId, stance] of Object.entries(stances)) {
+      if (stance === "care" || stance === "dont_care") chosen[caseId] = stance;
+    }
+    onSubmitFeedback?.(chosen);
+  }
 
   return (
     <div className={styles.page}>
@@ -119,7 +144,7 @@ export default function ReportDetail({
       <div className={styles.findings}>
         {findings.map((finding, i) => {
           const severity = SEVERITY[finding.classification];
-          const stance = feedback[finding.case_id];
+          const stance = stances[finding.case_id];
           return (
             <div className={styles.card} key={`${finding.case_id}-${i}`}>
               <div
@@ -151,7 +176,7 @@ export default function ReportDetail({
                     stance === "care" ? styles.careSelected : styles.care
                   }`}
                   aria-pressed={stance === "care"}
-                  onClick={() => onFeedback?.(finding.case_id, "care")}
+                  onClick={() => choose(finding.case_id, "care")}
                 >
                   This matters to me
                 </button>
@@ -161,7 +186,7 @@ export default function ReportDetail({
                     stance === "dont_care" ? styles.dontMindSelected : styles.dontMind
                   }`}
                   aria-pressed={stance === "dont_care"}
-                  onClick={() => onFeedback?.(finding.case_id, "dont_care")}
+                  onClick={() => choose(finding.case_id, "dont_care")}
                 >
                   I don&apos;t mind this
                 </button>
@@ -176,6 +201,9 @@ export default function ReportDetail({
         <p className={styles.closingText}>
           These are now being tracked for you — I&apos;ll tell you if anything changes.
         </p>
+        <button type="button" className={styles.submitBtn} onClick={submit}>
+          Save my answers
+        </button>
         <button type="button" className={styles.closingBtn} onClick={onDone}>
           Back to agreement
         </button>

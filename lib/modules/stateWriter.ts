@@ -13,11 +13,10 @@
  */
 
 import type { StateWriterInput, StateWriterOutput } from "@/lib/contracts";
-import { supabase } from "@/lib/db";
+import { supabase, upsertPreferences } from "@/lib/db";
 import type { Tracer } from "@/lib/trace";
 
 const VERSIONS_TABLE = "agreement_versions";
-const PREFERENCES_TABLE = "preferences";
 const UNIQUE_VIOLATION = "23505"; // Postgres unique_violation
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- tracer is unused by
@@ -81,21 +80,10 @@ export async function runStateWriter(
   }
 
   // --- Preference feedback (§5, §7): per-point user overrides win over defaults.
-  //     Upsert with source='user' on the (case_id, category) key. ---
+  //     Delegated to the single source of truth for preference writes
+  //     (db.upsertPreferences → source='user' on the (case_id, category) key). ---
   if (preferenceUpdates && preferenceUpdates.length > 0) {
-    const rows = preferenceUpdates.map((u) => ({
-      case_id: u.case_id,
-      category: u.category,
-      stance: u.stance,
-      source: "user" as const,
-      updated_at: new Date().toISOString(),
-    }));
-    const { error: prefErr } = await supabase
-      .from(PREFERENCES_TABLE)
-      .upsert(rows, { onConflict: "case_id,category" });
-    if (prefErr) {
-      throw new Error(`StateWriter: failed to upsert preference updates: ${prefErr.message}`);
-    }
+    await upsertPreferences(preferenceUpdates);
   }
 
   return { versionId, written };

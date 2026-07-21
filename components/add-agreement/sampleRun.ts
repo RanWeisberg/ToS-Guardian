@@ -127,10 +127,13 @@ const steps: Step[] = [
   },
 ];
 
+/** Seed values for the initial add-agreement draft (held in the draft context,
+ *  which now owns the live service/agreement text — see agreementDraftContext). */
+export const SAMPLE_SERVICE = "Acme Cloud";
+export const SAMPLE_AGREEMENT =
+  "You grant Acme a worldwide, non-exclusive licence to host, store, reproduce, and process content you upload…";
+
 export const sampleRun: AddAgreementProps = {
   steps,
-  serviceValue: "Acme Cloud",
-  agreementValue:
-    "You grant Acme a worldwide, non-exclusive licence to host, store, reproduce, and process content you upload…",
   done: true,
 };

@@ -25,6 +25,7 @@ import type { Step } from "@/lib/trace";
 import { MODULES } from "@/lib/modules";
 import type { ModuleName } from "@/lib/modules";
 import { runExecute } from "./runExecute";
+import { useAgreementDraft } from "./agreementDraftContext";
 import styles from "./AddAgreement.module.css";
 
 /**
@@ -47,10 +48,6 @@ export const MODULE_LABELS: Record<ModuleName, string> = {
 export interface AddAgreementProps {
   /** Sample trace shown in the initial state, before the first live run. */
   steps?: Step[];
-  /** Prefilled service name (the agent infers the category itself). */
-  serviceValue?: string;
-  /** Prefilled agreement text. */
-  agreementValue?: string;
   /** Whether the initial/sample trace represents a completed run. */
   done?: boolean;
   /** Open the persisted report for a completed run. Called with the report id
@@ -115,13 +112,13 @@ function describeStep(step: Step): string {
 
 export default function AddAgreement({
   steps: sampleSteps = [],
-  serviceValue = "",
-  agreementValue = "",
   done: sampleDone = false,
   onSeeResults,
 }: AddAgreementProps) {
-  const [service, setService] = useState(serviceValue);
-  const [agreement, setAgreement] = useState(agreementValue);
+  // Service + agreement text live in the draft context so they SURVIVE navigating
+  // to a report and back (the page unmounts; the context, mounted in the root
+  // layout, does not). Cleared only after a report is fully answered.
+  const { service, agreement, setService, setAgreement } = useAgreementDraft();
   const [runState, setRunState] = useState<RunState>("initial");
   const [liveSteps, setLiveSteps] = useState<Step[]>([]);
   const [response, setResponse] = useState<string | null>(null);
