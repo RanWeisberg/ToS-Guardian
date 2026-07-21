@@ -10,6 +10,7 @@
  */
 
 import { runAgent } from "@/lib/orchestrator";
+import { insertReport } from "@/lib/db";
 import type { ExecuteRequest, ExecuteResponse } from "@/lib/contracts";
 
 export const runtime = "nodejs";
@@ -29,7 +30,17 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json(bad, { status: 400 });
     }
 
-    const { response, steps } = await runAgent(prompt);
+    const { response, steps, report } = await runAgent(prompt);
+
+    // Persist a report row for runs that produced one (source='manual'; the mail
+    // path will persist with source='mail' later). Silent runs write nothing.
+    // The new id is returned via the `X-Report-Id` response HEADER so the GUI can
+    // open /report/[id] — the JSON envelope's four keys stay exactly as-is
+    // ({status,error,response,steps}, response still a plain string, CLAUDE.md §4).
+    let reportId: string | null = null;
+    if (report) {
+      reportId = await insertReport({ ...report, source: "manual" });
+    }
 
     const ok: ExecuteResponse = {
       status: "ok",
@@ -37,7 +48,8 @@ export async function POST(request: Request): Promise<Response> {
       response,
       steps,
     };
-    return Response.json(ok);
+    const headers = reportId ? { "X-Report-Id": reportId } : undefined;
+    return Response.json(ok, headers ? { headers } : undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const errorResponse: ExecuteResponse = {

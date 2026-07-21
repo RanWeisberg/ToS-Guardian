@@ -192,13 +192,34 @@ export interface ReportComposerInput {
   category: string;
   mode: MaterialityMode;
   material: MaterialFinding[];
+  /** True when the agreement was cut by the pre-clause-extraction hard cap
+   *  (lib/preprocess/trimAgreement.ts); surfaces a truncation notice. */
+  truncated: boolean;
+}
+
+/** One structured, user-facing report point: the LLM's plain-language copy
+ *  merged with the authoritative case metadata carried by the finding. This
+ *  replaces the former single Markdown `report` blob — the GUI renders points. */
+export interface ReportPoint {
+  case_id: string;
+  case_title: string;
+  classification: Classification;
+  weight: number;
+  /** Plain-language description of what the term is. */
+  what_it_is: string;
+  /** Why it matters to this user, grounded in their preferences. */
+  why_it_matters: string;
+  change: DiffChange;
 }
 
 export interface ReportComposerOutput {
   /** True when nothing was material and no report should be surfaced. */
   silent: boolean;
-  /** The personalized, human-readable report; null when silent. */
-  report: string | null;
+  /** User-facing notice when the agreement was very long and only the first
+   *  portion was analyzed; null when the agreement was not truncated. */
+  truncation_notice: string | null;
+  /** Structured per-finding points. No narrative Markdown summary is produced. */
+  points: ReportPoint[];
 }
 
 // ---------------------------------------------------------------------------

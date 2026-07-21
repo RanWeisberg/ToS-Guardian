@@ -9,11 +9,15 @@
  * findings ⇒ no report ⇒ NO LLM call ⇒ NO trace Step.
  *
  * When there ARE findings, exactly ONE LLM call composes the report. The LLM returns
- * STRUCTURED JSON (an overall summary + one point per finding) which is rendered into the
- * clause-by-clause markdown string the contract's `report: string` field carries — so the
- * GUI can render it point-by-point. The model may not invent findings or inflate severity:
- * it only writes about the cases passed in, and every point is validated back to an input
- * finding.
+ * STRUCTURED JSON — one point per finding, each with a plain-language "what it is" and
+ * "why it matters to you". There is NO multi-paragraph narrative summary and NO Markdown
+ * blob: the output is the structured `points` array (the GUI renders it point-by-point).
+ * The model may not invent findings or inflate severity: it only writes about the cases
+ * passed in, every point is validated back to an input finding, and the authoritative case
+ * title / classification / weight come from the finding, not the model.
+ *
+ * If the agreement was truncated by the pre-trim hard cap, a user-facing `truncation_notice`
+ * is surfaced (mechanical — no extra LLM call).
  *
  * Contract: implements the frozen ReportComposerInput → ReportComposerOutput shape.
  */
@@ -21,6 +25,7 @@
 import type {
   ReportComposerInput,
   ReportComposerOutput,
+  ReportPoint,
   MaterialFinding,
   DiffChange,
 } from "@/lib/contracts";
@@ -28,15 +33,20 @@ import { MODULES } from "@/lib/modules";
 import { chat } from "@/lib/llmod";
 import type { Tracer } from "@/lib/trace";
 
+/** Surfaced when the agreement was cut by the pre-clause-extraction hard cap. */
+const TRUNCATION_NOTICE =
+  "This agreement was very long, so only the first portion was analyzed. Some later terms may not be covered — paste the most relevant section for a complete review.";
+
 export async function runReportComposer(
   input: ReportComposerInput,
   tracer: Tracer,
 ): Promise<ReportComposerOutput> {
-  const { service, category, mode, material } = input;
+  const { service, category, mode, material, truncated } = input;
+  const truncation_notice = truncated ? TRUNCATION_NOTICE : null;
 
   // --- SILENCE RULE: nothing material ⇒ no report, no LLM call, no Step. ---
   if (material.length === 0) {
-    return { silent: true, report: null };
+    return { silent: true, truncation_notice, points: [] };
   }
 
   // Give each finding a stable id and gather the context the writer needs.
@@ -53,7 +63,20 @@ export async function runReportComposer(
   const raw = await chat({ system_prompt, user_prompt });
   const composed = parseComposed(raw, items);
 
-  const report = renderMarkdown(service, mode, composed, items);
+  // Merge the model's plain-language copy with the authoritative case metadata.
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const points: ReportPoint[] = composed.points.map((p) => {
+    const it = byId.get(p.id)!; // presence validated in parseComposed
+    return {
+      case_id: it.finding.case_id,
+      case_title: it.caseTitle,
+      classification: it.finding.classification,
+      weight: it.finding.weight,
+      what_it_is: p.what_it_is,
+      why_it_matters: p.why_it_matters,
+      change: it.finding.change,
+    };
+  });
 
   tracer.add({
     module: MODULES.ReportComposer,
@@ -61,7 +84,7 @@ export async function runReportComposer(
     response: composed,
   });
 
-  return { silent: false, report };
+  return { silent: false, truncation_notice, points };
 }
 
 /** The ToS;DR case title for a finding (from the matched case in after ?? before). */
@@ -76,14 +99,13 @@ function clauseTextFor(change: DiffChange): string {
   return (change.after ?? change.before)?.clause_text ?? change.summary;
 }
 
-const SYSTEM_PROMPT = `You are the ReportComposer for ToS Guardian. You write a personalized, plain-language report about a terms-of-service or privacy agreement for one specific user.
+const SYSTEM_PROMPT = `You are the ReportComposer for ToS Guardian. You write personalized, plain-language explanations of a terms-of-service or privacy agreement for one specific user.
 
 You are given a small set of MATERIAL findings that another module already judged worth surfacing. Write about ONLY these findings — never invent a finding, add a case, or inflate a severity beyond what is given. Keep the tone plain, calm, and non-alarmist; explain consequences without scaring.
 
-For each finding, explain in everyday language what the term means, and why it matters to THIS user (their stance/weight is reflected in the materiality reason provided). Also write one short overall summary of the report.
+For each finding, explain in everyday language what the term means, and why it matters to THIS user (their stance/weight is reflected in the materiality reason provided). Do NOT write an overall summary or any headings — only the per-finding fields below.
 
 Return STRICT JSON ONLY — no prose, no explanation, no markdown code fences. An object with exactly:
-  - "summary": a short (1-3 sentence) plain-language overview.
   - "points": an array with one object per finding, in the same order, each with exactly:
       - "id": the finding's id.
       - "what_it_is": a plain-language description of the term (no legalese).
@@ -95,7 +117,6 @@ interface ComposedPoint {
   why_it_matters: string;
 }
 interface Composed {
-  summary: string;
   points: ComposedPoint[];
 }
 
@@ -150,9 +171,6 @@ function parseComposed(raw: string, items: { id: string }[]): Composed {
   }
   const obj = parsed as Record<string, unknown>;
 
-  if (typeof obj.summary !== "string" || obj.summary.trim().length === 0) {
-    throw new Error(`ReportComposer: missing or empty "summary".`);
-  }
   if (!Array.isArray(obj.points)) {
     throw new Error(`ReportComposer: "points" must be an array. Got: ${raw.slice(0, 500)}`);
   }
@@ -184,39 +202,5 @@ function parseComposed(raw: string, items: { id: string }[]): Composed {
     }
   }
 
-  return { summary: obj.summary.trim(), points: [...seen.values()] };
-}
-
-/** Render the structured report into the clause-by-clause markdown string the contract's
- *  `report` field carries. Case title + severity come from the (authoritative) findings,
- *  not the model, so the trace and the report stay grounded. */
-function renderMarkdown(
-  service: string,
-  mode: ReportComposerInput["mode"],
-  composed: Composed,
-  items: {
-    id: string;
-    finding: MaterialFinding;
-    caseTitle: string;
-  }[],
-): string {
-  const byId = new Map(items.map((it) => [it.id, it]));
-  const heading =
-    mode === "onboarding"
-      ? `# What agreeing to ${service} means for you`
-      : `# What changed in ${service}'s terms — and why it matters`;
-
-  const lines: string[] = [heading, "", composed.summary, ""];
-
-  for (const point of composed.points) {
-    const it = byId.get(point.id)!;
-    lines.push(`## ${point.what_it_is}`);
-    lines.push(
-      `- **Maps to:** ${it.caseTitle} (${it.finding.classification}, weight ${it.finding.weight})`,
-    );
-    lines.push(`- **Why it matters to you:** ${point.why_it_matters}`);
-    lines.push("");
-  }
-
-  return lines.join("\n").trimEnd();
+  return { points: [...seen.values()] };
 }

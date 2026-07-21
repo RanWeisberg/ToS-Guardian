@@ -27,7 +27,9 @@ import type { Preference, ClauseClassification } from "@/lib/db";
 import type {
   ClauseCaseClassification,
   MaterialityMode,
+  ReportComposerOutput,
 } from "@/lib/contracts";
+import { trimAgreement } from "@/lib/preprocess/trimAgreement";
 
 import { runIntakeRouter } from "@/lib/modules/intakeRouter";
 import { runDocumentResolver } from "@/lib/modules/documentResolver";
@@ -51,12 +53,32 @@ const UNKNOWN_SERVICE = "Unknown service";
 const UNKNOWN_CATEGORY = "general";
 
 /**
- * Run the full agent pipeline for one prompt and return the human-readable
- * response plus the ordered LLM `steps` trace.
+ * The report payload a completed run yields, ready for persistence by the caller
+ * (the /api/execute route persists it with source='manual'; the mail path will
+ * persist it with source='mail' later). Null when the run was silent or
+ * short-circuited — nothing to persist.
  */
-export async function runAgent(
-  prompt: string,
-): Promise<{ response: string; steps: Step[] }> {
+export interface RunReport {
+  service: string;
+  category: string;
+  points: ReportComposerOutput["points"];
+  truncation_notice: string | null;
+  response_line: string;
+}
+
+/** What runAgent returns: the human-readable response line, the ordered LLM
+ *  `steps` trace, and (when a report was produced) the report payload to persist. */
+export interface RunResult {
+  response: string;
+  steps: Step[];
+  report: RunReport | null;
+}
+
+/**
+ * Run the full agent pipeline for one prompt and return the human-readable
+ * response, the ordered LLM `steps` trace, and any report payload to persist.
+ */
+export async function runAgent(prompt: string): Promise<RunResult> {
   const tracer = new Tracer();
 
   // --- 1. IntakeRouter: classify + extract. -------------------------------
@@ -71,6 +93,7 @@ export async function runAgent(
         "there's nothing for me to review. Paste an agreement (and name the " +
         "service) and I'll break down what agreeing to it means for you.",
       steps: tracer.steps,
+      report: null,
     };
   }
 
@@ -91,14 +114,22 @@ export async function runAgent(
         `I couldn't get the agreement text automatically${why}. ` +
         `Please paste the full text of ${service}'s policy and I'll review it.`,
       steps: tracer.steps,
+      report: null,
     };
   }
 
   const rawText = resolved.text;
 
+  // --- 2b. Pre-trim + generous hard cap. ----------------------------------
+  //  Mechanical cleanup only: strip unmistakable non-clause structure and cap
+  //  pathologically long input on a clean boundary. No LLM call, no trace Step.
+  //  ClauseExtractor remains the sole judge of what is a real clause. The
+  //  `truncated` flag rides along to ReportComposer for the user-facing notice.
+  const trimmed = trimAgreement(rawText);
+
   // --- 3. ClauseExtractor: segment into meaningful clauses. ---------------
   const { clauses } = await runClauseExtractor(
-    { text: rawText, service, category },
+    { text: trimmed.text, service, category },
     tracer,
   );
 
@@ -148,7 +179,10 @@ export async function runAgent(
   );
 
   // --- 8. ReportComposer: personalized report, or silent. -----------------
-  const composed = await runReportComposer({ service, category, mode, material }, tracer);
+  const composed = await runReportComposer(
+    { service, category, mode, material, truncated: trimmed.truncated },
+    tracer,
+  );
 
   // --- 9. StateWriter: persist the new version + classifications. ---------
   //  Always persisted (even when the report is silent): the version store is the
@@ -171,11 +205,22 @@ export async function runAgent(
     mode,
     service,
     version,
-    clauseCount: clauses.length,
-    materialCount: material.length,
+    truncated: trimmed.truncated,
   });
 
-  return { response, steps: tracer.steps };
+  // A report exists only when something was material (ReportComposer not silent).
+  // The caller persists it (route: source='manual'; mail path later: source='mail').
+  const report: RunReport | null = composed.silent
+    ? null
+    : {
+        service,
+        category,
+        points: composed.points,
+        truncation_notice: composed.truncation_notice,
+        response_line: response,
+      };
+
+  return { response, steps: tracer.steps, report };
 }
 
 // ---------------------------------------------------------------------------
@@ -243,34 +288,36 @@ function uniqueCaseIds(changes: { case_id: string | null }[]): string[] {
   return [...set];
 }
 
-/** Turn the pipeline outcome into the single user-facing `response` string. */
+/** Turn the pipeline outcome into the single user-facing `response` — a SHORT
+ *  plain-text line (no Markdown, no headings). The structured report the GUI
+ *  renders lives in ReportComposer's `points`; this line is just a headline plus
+ *  any truncation notice. */
 function buildResponse(args: {
-  composed: { silent: boolean; report: string | null };
+  composed: ReportComposerOutput;
   mode: MaterialityMode;
   service: string;
   version: number;
-  clauseCount: number;
-  materialCount: number;
+  truncated: boolean;
 }): string {
-  const { composed, mode, service, version, clauseCount } = args;
+  const { composed, mode, service, version, truncated } = args;
+  const truncationNote = truncated
+    ? " Heads up: this agreement was very long, so only the first portion was analyzed."
+    : "";
 
-  // A report was written → it IS the response.
-  if (!composed.silent && composed.report !== null) {
-    return composed.report;
-  }
-
-  // Silent: nothing material. Give a clear, mode-appropriate message.
-  if (mode === "onboarding") {
+  // Findings present → a short count line.
+  if (!composed.silent && composed.points.length > 0) {
+    const n = composed.points.length;
+    const noun = mode === "onboarding" ? "thing" : "change";
     return (
-      `I recorded ${service} as your baseline (v${version}) and reviewed ` +
-      `${clauseCount} clause${clauseCount === 1 ? "" : "s"}. Nothing in these terms ` +
-      `stood out as concerning given your current preferences — I'll flag it if a ` +
-      `future update changes that.`
+      `Reviewed ${service} and found ${n} ${noun}${n === 1 ? "" : "s"} worth your attention.` +
+      truncationNote
     );
   }
 
-  return (
-    `I reviewed the updated ${service} terms (now v${version}) and nothing changed ` +
-    `that's material to you, so there's nothing you need to act on.`
-  );
+  // Silent: nothing material.
+  const base =
+    mode === "onboarding"
+      ? `Recorded ${service} as your baseline (v${version}); nothing stood out given your current preferences.`
+      : `Reviewed the updated ${service} terms (now v${version}); nothing material changed.`;
+  return base + truncationNote;
 }

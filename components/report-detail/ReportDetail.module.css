@@ -127,6 +127,29 @@
   margin: 52px auto 40px;
 }
 
+/* ---- Truncation notice ----------------------------------------------- */
+
+.truncation {
+  max-width: 820px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  background: #fdf2e1;
+  border-radius: 16px;
+  color: #8a5a12;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.truncationIcon {
+  flex-shrink: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
 .back {
   display: inline-flex;
   align-items: center;

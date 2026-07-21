@@ -353,6 +353,19 @@
   transform: translateY(-1px);
 }
 
+/* Grayed until a live run has produced a real, persisted report. */
+.seeBtnDisabled {
+  background: #e6e4dd;
+  color: #a3a299;
+  box-shadow: none;
+  cursor: default;
+}
+
+.seeBtnDisabled:hover {
+  background: #e6e4dd;
+  transform: none;
+}
+
 /* ---- Live-run states (Phase 7 Step B) ------------------------------- */
 
 /* Disabled primary button while a review is in flight. */

@@ -8,10 +8,11 @@
  * shows what changed, which ToS;DR case it maps to, its severity, and why it
  * matters to the user, plus a per-point care/don't-care feedback control.
  *
- * PRESENTATIONAL ONLY. This component renders typed props and is NOT wired to
- * live data, /api/execute, or the feedback-writing (StateWriter) path yet — that
- * happens in a later step. It intentionally imports the *real* backend contract
- * shapes (no invented field names):
+ * Presentational. It renders typed props and is now fed REAL persisted data by
+ * /report/[id] (Phase 7 Step C), with the sample data kept only for the /report
+ * preview. The per-point feedback control is still display-only — the
+ * feedback-writing (StateWriter) path is wired in a later step. It intentionally
+ * imports the *real* backend contract shapes (no invented field names):
  *   - findings are `MaterialFinding[]` exactly as MaterialityJudge/ReportComposer
  *     produce them (lib/contracts.ts).
  *   - feedback stance reuses `Preference["stance"]` ("care" | "dont_care"),
@@ -42,6 +43,9 @@ export interface ReportDetailProps {
   feedback?: Record<string, FeedbackStance>;
   /** Human phrasing for when the agent reviewed this (e.g. "just now"). */
   reviewedLabel?: string;
+  /** When set, the agreement was very long and only its first portion was
+   *  analyzed; shown as a notice at the top of the report. */
+  truncationNotice?: string | null;
   /** Optional callbacks; presentational default is a no-op. */
   onFeedback?: (caseId: string, stance: FeedbackStance) => void;
   onBack?: () => void;
@@ -77,6 +81,7 @@ export default function ReportDetail({
   findings,
   feedback = {},
   reviewedLabel = "just now",
+  truncationNotice = null,
   onFeedback,
   onBack,
   onDone,
@@ -99,6 +104,16 @@ export default function ReportDetail({
         </p>
         <p className={styles.reviewed}>Reviewed {reviewedLabel}.</p>
       </div>
+
+      {/* Truncation notice (only when the agreement was cut by the hard cap) */}
+      {truncationNotice && (
+        <div className={styles.truncation}>
+          <span className={styles.truncationIcon} aria-hidden="true">
+            ⚠
+          </span>
+          <span>{truncationNotice}</span>
+        </div>
+      )}
 
       {/* Findings */}
       <div className={styles.findings}>

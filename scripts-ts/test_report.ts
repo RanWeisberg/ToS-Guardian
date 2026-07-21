@@ -1,10 +1,13 @@
 /**
  * scripts-ts/test_report.ts — standalone smoke test for Module 7 (ReportComposer).
  *
- * Two scenarios:
+ * Three scenarios:
  *   (1) material findings present (the bad case-166 finding from the materiality test)
- *       → a structured clause-by-clause report is produced, 1 step.
- *   (2) empty material findings → silent "no report", 0 steps (no LLM call).
+ *       → structured per-finding `points` are produced, 1 step, NO Markdown blob,
+ *         truncation_notice null.
+ *   (2) empty material findings → silent, 0 steps (no LLM call), no points.
+ *   (3) material findings + truncated=true → points produced AND a non-null
+ *       truncation_notice.
  *
  * Run with:  npx tsx --env-file=.env.local scripts-ts/test_report.ts
  */
@@ -12,6 +15,12 @@
 import { runReportComposer } from "@/lib/modules/reportComposer";
 import { Tracer } from "@/lib/trace";
 import type { MaterialFinding, MatchedCase, DiffChange } from "@/lib/contracts";
+
+let failures = 0;
+function assert(cond: boolean, label: string): void {
+  console.log(`${cond ? "  ✓" : "  ✗ FAIL"} ${label}`);
+  if (!cond) failures++;
+}
 
 function mc(case_id: string, title: string, classification: MatchedCase["classification"], weight: number): MatchedCase {
   return { case_id, title, classification, weight, topic: "Third Parties", confidence: 0.95 };
@@ -46,19 +55,36 @@ const FINDING_166: MaterialFinding = {
 
 async function scenario1() {
   console.log("\n=====================================================");
-  console.log("SCENARIO 1: material findings present → expect a report, 1 step");
+  console.log("SCENARIO 1: material findings present → expect structured points, 1 step");
   console.log("=====================================================");
   const tracer = new Tracer();
   const out = await runReportComposer(
-    { service: "Acme Cloud", category: "cloud storage", mode: "change", material: [FINDING_166] },
+    {
+      service: "Acme Cloud",
+      category: "cloud storage",
+      mode: "change",
+      material: [FINDING_166],
+      truncated: false,
+    },
     tracer,
   );
   console.log(`silent: ${out.silent}`);
-  console.log("\n--- report ---\n");
-  console.log(out.report);
-  console.log("\n--- recorded step response (structured) ---");
-  console.log(JSON.stringify(tracer.steps[0]?.response, null, 2));
+  console.log(`truncation_notice: ${out.truncation_notice}`);
+  console.log("\n--- points (structured) ---\n");
+  console.log(JSON.stringify(out.points, null, 2));
   console.log(`\nsteps recorded: ${tracer.steps.length} (expected 1)`);
+
+  const p = out.points[0];
+  assert(out.silent === false, "not silent");
+  assert(out.truncation_notice === null, "truncation_notice is null when not truncated");
+  assert(out.points.length === 1, "one point per finding");
+  assert(p?.case_id === "166", "point carries authoritative case_id");
+  assert(p?.classification === "bad", "point carries authoritative classification");
+  assert(typeof p?.what_it_is === "string" && p.what_it_is.length > 0, "what_it_is present");
+  assert(typeof p?.why_it_matters === "string" && p.why_it_matters.length > 0, "why_it_matters present");
+  // No Markdown blob anywhere in the output.
+  assert(!JSON.stringify(out).includes("#"), "no Markdown headings in output");
+  assert(tracer.steps.length === 1, "exactly one LLM step recorded");
 }
 
 async function scenario2() {
@@ -67,17 +93,61 @@ async function scenario2() {
   console.log("=====================================================");
   const tracer = new Tracer();
   const out = await runReportComposer(
-    { service: "Acme Cloud", category: "cloud storage", mode: "change", material: [] },
+    {
+      service: "Acme Cloud",
+      category: "cloud storage",
+      mode: "change",
+      material: [],
+      truncated: false,
+    },
     tracer,
   );
   console.log(`silent: ${out.silent}`);
-  console.log(`report: ${out.report}`);
+  console.log(`points: ${out.points.length}`);
   console.log(`steps recorded: ${tracer.steps.length} (expected 0 — no LLM call when silent)`);
+
+  assert(out.silent === true, "silent when no findings");
+  assert(out.points.length === 0, "no points when silent");
+  assert(tracer.steps.length === 0, "no LLM step when silent");
+}
+
+async function scenario3() {
+  console.log("\n=====================================================");
+  console.log("SCENARIO 3: findings + truncated=true → expect a truncation_notice");
+  console.log("=====================================================");
+  const tracer = new Tracer();
+  const out = await runReportComposer(
+    {
+      service: "Acme Cloud",
+      category: "cloud storage",
+      mode: "onboarding",
+      material: [FINDING_166],
+      truncated: true,
+    },
+    tracer,
+  );
+  console.log(`silent: ${out.silent}`);
+  console.log(`truncation_notice: ${out.truncation_notice}`);
+  console.log(`points: ${out.points.length}`);
+
+  assert(out.silent === false, "not silent");
+  assert(
+    typeof out.truncation_notice === "string" && out.truncation_notice.length > 0,
+    "truncation_notice present when truncated",
+  );
+  assert(out.points.length === 1, "points still produced when truncated");
 }
 
 async function main() {
   await scenario1();
   await scenario2();
+  await scenario3();
+  console.log("\n=====================================================");
+  if (failures === 0) console.log("ALL CHECKS PASSED");
+  else {
+    console.log(`${failures} CHECK(S) FAILED`);
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

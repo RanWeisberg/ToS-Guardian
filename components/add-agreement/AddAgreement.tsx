@@ -53,8 +53,9 @@ export interface AddAgreementProps {
   agreementValue?: string;
   /** Whether the initial/sample trace represents a completed run. */
   done?: boolean;
-  /** Navigate to the report screen (enabled after a successful run). */
-  onSeeResults?: () => void;
+  /** Open the persisted report for a completed run. Called with the report id
+   *  captured from the live /api/execute run. */
+  onSeeResults?: (reportId: string) => void;
 }
 
 /** The run lifecycle for one review. */
@@ -126,6 +127,13 @@ export default function AddAgreement({
   const [response, setResponse] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [validationHint, setValidationHint] = useState<string | null>(null);
+  // The persisted report id from the last successful run (enables "See what I
+  // found →" and the /report/[id] navigation).
+  const [reportId, setReportId] = useState<string | null>(null);
+  // TOKEN-SAVING GUARD: the exact agreement text last SUBMITTED to /api/execute.
+  // The run button stays disabled while the textarea still holds this text, so an
+  // identical agreement can't be re-run and waste budget.
+  const [lastSubmitted, setLastSubmitted] = useState<string | null>(null);
 
   // Before the first live run we show the sample trace (the design-mock state);
   // once a run succeeds we show only the real data returned by /api/execute.
@@ -133,6 +141,11 @@ export default function AddAgreement({
   const displaySteps = showingLive ? liveSteps : sampleSteps;
   const isDone = showingLive ? true : sampleDone;
   const loading = runState === "loading";
+
+  // Already reviewed this exact agreement → block re-submitting it (budget).
+  const alreadyReviewed =
+    lastSubmitted !== null && agreement.trim() === lastSubmitted;
+  const runDisabled = loading || alreadyReviewed;
 
   async function handleReview() {
     const svc = service.trim();
@@ -150,6 +163,9 @@ export default function AddAgreement({
       return;
     }
 
+    // Guard: don't re-run the identical agreement (belt-and-braces with runDisabled).
+    if (alreadyReviewed) return;
+
     setValidationHint(null);
     setErrorMessage(null);
     setResponse(null);
@@ -159,10 +175,14 @@ export default function AddAgreement({
     const prompt = `I'm signing up for ${svc}. Here is the agreement I'm being asked to accept:\n\n${text}`;
 
     try {
-      const data = await runExecute(prompt);
+      const { data, reportId: newReportId } = await runExecute(prompt);
       if (data.status === "ok") {
         setLiveSteps(data.steps ?? []);
         setResponse(data.response);
+        setReportId(newReportId);
+        // Remember what we just reviewed → keep the run button disabled until the
+        // agreement text changes. Only on success (errors stay retryable).
+        setLastSubmitted(text);
         setRunState("success");
       } else {
         setErrorMessage(
@@ -226,13 +246,17 @@ export default function AddAgreement({
             type="button"
             className={styles.primaryBtn}
             onClick={handleReview}
-            disabled={loading}
+            disabled={runDisabled}
           >
             {loading ? "Reviewing…" : "Review it for me"}
           </button>
 
           {validationHint ? (
             <p className={styles.hintNotice}>{validationHint}</p>
+          ) : alreadyReviewed ? (
+            <p className={styles.hintNotice}>
+              Already reviewed — edit the agreement to run again.
+            </p>
           ) : (
             <p className={styles.reassurance}>
               I only flag the things that actually affect you.
@@ -303,7 +327,13 @@ export default function AddAgreement({
                     : "Working through it…"}
                 </span>
                 {isDone && (
-                  <button type="button" className={styles.seeBtn} onClick={onSeeResults}>
+                  <button
+                    type="button"
+                    className={`${styles.seeBtn} ${reportId ? "" : styles.seeBtnDisabled}`}
+                    onClick={() => reportId && onSeeResults?.(reportId)}
+                    disabled={!reportId}
+                    title={reportId ? undefined : "Run a review to see the full report"}
+                  >
                     See what I found →
                   </button>
                 )}

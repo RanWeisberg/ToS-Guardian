@@ -4,10 +4,10 @@
  * app/add-agreement/page.tsx — the execute / add-agreement screen (the graded
  * bare interface, and the app's default landing screen).
  *
- * Step A (shell only): renders the existing <AddAgreement /> with its sampleRun
- * placeholder data inside the shared <AppShell />. Nothing is wired to
- * /api/execute yet — the "See what I found →" button just navigates to the
- * report screen for now (real data flow lands in a later step).
+ * Renders <AddAgreement /> (seeded with sampleRun for the initial state) inside
+ * the shared <AppShell />. On a successful live run, <AddAgreement /> captures
+ * the persisted report id and calls onSeeResults(id); we navigate to the real
+ * /report/[id]. Until then, "See what I found →" stays disabled.
  */
 
 import { useRouter } from "next/navigation";
@@ -19,7 +19,10 @@ export default function AddAgreementPage() {
   const router = useRouter();
   return (
     <AppShell>
-      <AddAgreement {...sampleRun} onSeeResults={() => router.push("/report")} />
+      <AddAgreement
+        {...sampleRun}
+        onSeeResults={(reportId) => router.push(`/report/${reportId}`)}
+      />
     </AppShell>
   );
 }
