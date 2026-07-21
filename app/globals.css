@@ -1,0 +1,31 @@
+/*
+ * app/globals.css — global frame for the GUI.
+ * Frozen visual language (DESIGN.md): warm off-white canvas, Manrope, near-black
+ * text, warm-teal links. Minimal on purpose; per-screen styling lives in each
+ * component's own CSS module.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #faf9f7;
+  color: #1b1b1a;
+  font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+a {
+  color: #0f9e8f;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #0c8578;
+}

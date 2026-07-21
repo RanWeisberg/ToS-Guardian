@@ -1,0 +1,358 @@
+/*
+ * ReportDetail.module.css — styles for the report-detail drill-down screen.
+ * Ported faithfully from the Claude Design handoff ("ToS Guardian Report.dc.html").
+ * Tokens (colours, radii, type scale) mirror that design 1:1. Hover states live
+ * here because the design used them and inline styles cannot express :hover.
+ */
+
+.page {
+  min-height: 100vh;
+  background: #faf9f7;
+  font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1b1b1a;
+  padding: 28px 40px 64px;
+}
+
+/* ---- Top bar --------------------------------------------------------- */
+
+.topbar {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.logo {
+  width: 30px;
+  height: 34px;
+  background: #0f9e8f;
+  border-radius: 8px 8px 13px 13px / 8px 8px 16px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(15, 158, 143, 0.28);
+}
+
+.logoRing {
+  width: 11px;
+  height: 11px;
+  border: 2.5px solid #faf9f7;
+  border-radius: 50%;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  transform: rotate(-45deg);
+  margin-top: -2px;
+}
+
+.brandName {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  padding: 8px 16px 8px 13px;
+  border-radius: 100px;
+  box-shadow: 0 1px 3px rgba(27, 27, 26, 0.05);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f9e8f;
+  box-shadow: 0 0 0 3px rgba(15, 158, 143, 0.16);
+}
+
+.statusLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #57564f;
+}
+
+/* ---- Nav tabs -------------------------------------------------------- */
+
+.tabs {
+  max-width: 1200px;
+  margin: 22px auto 0;
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  font-size: 15px;
+  font-weight: 600;
+  color: #8a897f;
+  padding: 9px 18px;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+}
+
+.tab:hover {
+  color: #1b1b1a;
+  background: #f2f1ed;
+}
+
+.tabActive {
+  font-weight: 700;
+  color: #fff;
+  background: #0f9e8f;
+  box-shadow: 0 4px 12px rgba(15, 158, 143, 0.28);
+}
+
+.tabActive:hover {
+  color: #fff;
+  background: #0f9e8f;
+}
+
+/* ---- Header block ---------------------------------------------------- */
+
+.header {
+  max-width: 820px;
+  margin: 52px auto 40px;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #8a897f;
+  margin-bottom: 22px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+
+.back:hover {
+  color: #0f9e8f;
+}
+
+.title {
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 16px;
+  max-width: 720px;
+  text-wrap: balance;
+}
+
+.subtitle {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #6b6a63;
+  margin: 0 0 10px;
+  max-width: 600px;
+}
+
+.reviewed {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: #a3a299;
+  margin: 0;
+}
+
+/* ---- Findings -------------------------------------------------------- */
+
+.findings {
+  max-width: 820px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 22px;
+  padding: 34px 36px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+.severity {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin-bottom: 18px;
+}
+
+.severityDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.cardTitle {
+  font-size: 25px;
+  line-height: 1.22;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+
+.why {
+  font-size: 17px;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #57564f;
+  margin: 0 0 22px;
+}
+
+.mapsTo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #f6f5f2;
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+
+.mapsToIcon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: #e6e4dd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8a897f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mapsToLabel {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #6b6a63;
+}
+
+/* ---- Per-point feedback controls ------------------------------------ */
+
+.feedback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feedbackLabel {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #a3a299;
+  margin-right: 2px;
+}
+
+.fbBtn {
+  border: none;
+  border-radius: 100px;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.care {
+  background: #eaf6f4;
+  color: #0c8578;
+}
+
+.care:hover {
+  background: #d8efeb;
+}
+
+.dontMind {
+  background: #f2f1ed;
+  color: #8a897f;
+}
+
+.dontMind:hover {
+  background: #e8e6e0;
+}
+
+/* Selected states: the picked stance fills in, the other fades back. */
+.careSelected {
+  background: #0f9e8f;
+  color: #fff;
+}
+
+.careSelected:hover {
+  background: #0c8578;
+}
+
+.dontMindSelected {
+  background: #57564f;
+  color: #fff;
+}
+
+.dontMindSelected:hover {
+  background: #46453f;
+}
+
+/* ---- Closing --------------------------------------------------------- */
+
+.closing {
+  max-width: 820px;
+  margin: 44px auto 0;
+  text-align: center;
+}
+
+.closingText {
+  font-size: 18px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: #6b6a63;
+  margin: 0 auto 22px;
+  max-width: 560px;
+}
+
+.closingBtn {
+  display: block;
+  width: 100%;
+  background: #fff;
+  color: #1b1b1a;
+  border: none;
+  border-radius: 15px;
+  padding: 17px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 8px 22px rgba(27, 27, 26, 0.06);
+  transition: transform 0.18s;
+  text-align: center;
+  cursor: pointer;
+}
+
+.closingBtn:hover {
+  transform: translateY(-1px);
+  color: #1b1b1a;
+}

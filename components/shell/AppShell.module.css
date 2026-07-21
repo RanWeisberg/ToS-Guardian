@@ -1,0 +1,143 @@
+/*
+ * AppShell.module.css — the shared chrome: top bar (wordmark + status pill) and
+ * the four-tab nav band. Tokens ported from the Claude Design handoff and frozen
+ * in DESIGN.md. The nav is its own horizontal band; page content stacks below
+ * (the single allowed horizontal row, per the layout rule).
+ */
+
+/* ---- Top bar --------------------------------------------------------- */
+
+.topbar {
+  padding: 28px 40px 0;
+}
+
+.bar {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.logo {
+  width: 30px;
+  height: 34px;
+  background: #0f9e8f;
+  border-radius: 8px 8px 13px 13px / 8px 8px 16px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(15, 158, 143, 0.28);
+}
+
+.logoRing {
+  width: 11px;
+  height: 11px;
+  border: 2.5px solid #faf9f7;
+  border-radius: 50%;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  transform: rotate(-45deg);
+  margin-top: -2px;
+}
+
+.brandName {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  padding: 8px 16px 8px 13px;
+  border-radius: 100px;
+  box-shadow: 0 1px 3px rgba(27, 27, 26, 0.05);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f9e8f;
+  box-shadow: 0 0 0 3px rgba(15, 158, 143, 0.16);
+}
+
+.statusLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #57564f;
+}
+
+/* ---- Nav tabs (own horizontal band) --------------------------------- */
+
+.tabs {
+  max-width: 1200px;
+  margin: 22px auto 0;
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #8a897f;
+  padding: 9px 18px;
+  border-radius: 100px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.tab:hover {
+  color: #1b1b1a;
+  background: #f2f1ed;
+}
+
+/* Defined after .tab:hover so the active tab wins the equal-specificity tie. */
+.tabActive {
+  font-weight: 700;
+  color: #fff;
+  background: #0f9e8f;
+  box-shadow: 0 4px 12px rgba(15, 158, 143, 0.28);
+}
+
+.tabActive:hover {
+  color: #fff;
+  background: #0f9e8f;
+}
+
+/* ---- Light-pass placeholder pages ----------------------------------- */
+
+.placeholderWrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 72px 40px 64px;
+}
+
+.placeholderTitle {
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+
+.placeholderText {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #6b6a63;
+  margin: 0;
+  max-width: 600px;
+}
