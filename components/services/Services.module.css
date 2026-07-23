@@ -1,0 +1,298 @@
+/*
+ * Services.module.css — the Services tab (tracked services + unsubscribe).
+ * Frozen design language (DESIGN.md): warm #faf9f7, teal #0f9e8f, ~20px rounded
+ * white cards, soft diffuse shadows, single column.
+ */
+
+.wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 52px 40px 64px;
+}
+
+.header {
+  margin-bottom: 28px;
+}
+
+.title {
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 12px;
+  text-wrap: balance;
+}
+
+.subtitle {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #6b6a63;
+  margin: 0;
+  max-width: 600px;
+}
+
+/* ---- Single-column list --------------------------------------------- */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px 28px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+/* Top row within one card: service name + issue-count pill. */
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.service {
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.category {
+  font-size: 15px;
+  font-weight: 500;
+  color: #8a897f;
+  margin: 0 0 16px;
+  text-transform: capitalize;
+}
+
+.issuePill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.issuePillOpen {
+  background: #fce9e6;
+  color: #c0492f;
+}
+
+.issuePillClear {
+  background: #f2f1ed;
+  color: #8a897f;
+}
+
+.issueDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Foot row within one card: meta on the left, action on the right. */
+.cardFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0efeb;
+}
+
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #a3a299;
+  min-width: 0;
+}
+
+.metaDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f9e8f;
+  box-shadow: 0 0 0 3px rgba(15, 158, 143, 0.16);
+  flex-shrink: 0;
+}
+
+.versionTag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f2f1ed;
+  color: #8a897f;
+}
+
+.stopBtn {
+  flex-shrink: 0;
+  border: none;
+  background: #f2f1ed;
+  color: #8a897f;
+  border-radius: 100px;
+  padding: 9px 16px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.stopBtn:hover {
+  background: #fce9e6;
+  color: #c0492f;
+}
+
+/* ---- Empty state ----------------------------------------------------- */
+
+.empty {
+  background: #fff;
+  border-radius: 22px;
+  padding: 56px 44px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+.emptyTitle {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 0 10px;
+}
+
+.emptyText {
+  font-size: 17px;
+  line-height: 1.5;
+  color: #6b6a63;
+  margin: 0 auto 26px;
+  max-width: 420px;
+}
+
+.emptyBtn {
+  display: inline-block;
+  background: #0f9e8f;
+  color: #fff;
+  border-radius: 14px;
+  padding: 15px 26px;
+  font-size: 15.5px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(15, 158, 143, 0.3);
+  transition: background 0.18s, transform 0.18s;
+}
+
+.emptyBtn:hover {
+  background: #0c8578;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* ---- Confirm dialog -------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 27, 26, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.dialog {
+  background: #fff;
+  border-radius: 22px;
+  padding: 32px 34px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 8px 24px rgba(27, 27, 26, 0.18), 0 2px 6px rgba(27, 27, 26, 0.08);
+}
+
+.dialogTitle {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 0 10px;
+  text-wrap: balance;
+}
+
+.dialogText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: #6b6a63;
+  margin: 0 0 26px;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dialogCancel {
+  border: none;
+  background: #f2f1ed;
+  color: #57564f;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dialogCancel:hover {
+  background: #e8e6e0;
+}
+
+.dialogConfirm {
+  border: none;
+  background: #c0492f;
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dialogConfirm:hover {
+  background: #a63c25;
+}
+
+.dialogConfirm:disabled,
+.dialogCancel:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.dialogError {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #c0492f;
+  margin: 16px 0 0;
+}

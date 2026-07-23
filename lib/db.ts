@@ -319,6 +319,72 @@ export async function listRecentActivity(limit = 6): Promise<RecentActivity[]> {
   }));
 }
 
+/** One entry in the Activity Log: an agreement the agent reviewed and what it did. */
+export interface ActivityEntry {
+  service: string;
+  category: string;
+  version: number;
+  at: string;
+  /** The report produced for this service, if any — else null (nothing flagged). */
+  reportId: string | null;
+  status: "reported" | "silent";
+}
+
+/**
+ * The full review history (NO LLM): EVERY agreement_versions row (any `active`
+ * value — since-unsubscribed services are still part of the history), newest
+ * first, left-joined to reports to say what the agent did.
+ *
+ * Join heuristic (one reports read, matched in memory — no N+1): a report row
+ * carries `service` + `created_at` but not a version number, and a report is
+ * written in the same run as its version. So we map each version to the most
+ * recent report for that service, if any → status 'reported' (+ reportId), else
+ * 'silent'. Coarse when a service has multiple versions but only some produced a
+ * report (older silent versions then link to the latest report), which is fine
+ * for the demo's mostly-single-version services. Throws loudly on error; [] empty.
+ */
+export async function listActivity(): Promise<ActivityEntry[]> {
+  const { data: vData, error: vErr } = await supabase
+    .from(VERSIONS_TABLE)
+    .select("service, category, version, created_at")
+    .order("created_at", { ascending: false });
+  if (vErr) {
+    throw new Error(`db.listActivity: failed to read versions: ${vErr.message}`);
+  }
+  const versions = (vData ?? []) as {
+    service: string;
+    category: string;
+    version: number;
+    created_at: string;
+  }[];
+  if (versions.length === 0) return [];
+
+  const { data: rData, error: rErr } = await supabase
+    .from(REPORTS_TABLE)
+    .select("id, service, created_at")
+    .order("created_at", { ascending: false });
+  if (rErr) {
+    throw new Error(`db.listActivity: failed to read reports: ${rErr.message}`);
+  }
+  // Most recent report per service (rows are created_at-desc → first seen wins).
+  const latestReportByService = new Map<string, string>();
+  for (const r of (rData ?? []) as { id: string; service: string; created_at: string }[]) {
+    if (!latestReportByService.has(r.service)) latestReportByService.set(r.service, r.id);
+  }
+
+  return versions.map((v) => {
+    const reportId = latestReportByService.get(v.service) ?? null;
+    return {
+      service: v.service,
+      category: v.category,
+      version: v.version,
+      at: v.created_at,
+      reportId,
+      status: reportId ? "reported" : "silent",
+    };
+  });
+}
+
 /**
  * The derived standing-issues view (NO LLM): for each active service's latest
  * version, the PROBLEMATIC (bad|blocker) cases the user still cares about.
@@ -418,6 +484,38 @@ export async function computeStandingIssues(): Promise<StandingIssueService[]> {
     }
   }
   return result;
+}
+
+/** Soft-unsubscribe a service: set active=false on ALL its agreement_versions
+ *  rows. Re-subscribe is automatic — StateWriter sets active=true on any new
+ *  version (§8). Throws loudly on error (CLAUDE.md §7). */
+export async function unsubscribeService(service: string): Promise<void> {
+  const { error } = await supabase
+    .from(VERSIONS_TABLE)
+    .update({ active: false })
+    .eq("service", service);
+  if (error) {
+    throw new Error(`db.unsubscribeService: failed to unsubscribe "${service}": ${error.message}`);
+  }
+}
+
+/** One tracked service plus how many standing issues it carries. */
+export interface ServiceWithIssues extends ActiveService {
+  /** Number of care + problematic standing issues (0 when none — still listed). */
+  issueCount: number;
+}
+
+/** Every active service (newest review first) annotated with its standing-issue
+ *  count. Services with 0 issues still appear. [] when nothing is tracked. Throws
+ *  loudly on error (CLAUDE.md §7). NO LLM. */
+export async function listServicesWithIssueCounts(): Promise<ServiceWithIssues[]> {
+  const [services, standing] = await Promise.all([
+    listActiveServices(),
+    computeStandingIssues(),
+  ]);
+  const countByService = new Map<string, number>();
+  for (const s of standing) countByService.set(s.service, s.issues.length);
+  return services.map((s) => ({ ...s, issueCount: countByService.get(s.service) ?? 0 }));
 }
 
 /** Distinct real service categories (from the version store), sorted. [] when

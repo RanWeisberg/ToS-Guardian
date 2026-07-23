@@ -1,0 +1,240 @@
+/*
+ * ActivityLog.module.css — the Activity Log tab (full review history).
+ * Frozen design language (DESIGN.md): warm #faf9f7, teal #0f9e8f, ~20px rounded
+ * white cards, soft diffuse shadows, single column.
+ */
+
+.wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 52px 40px 64px;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 12px;
+  text-wrap: balance;
+}
+
+.subtitle {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #6b6a63;
+  margin: 0;
+  max-width: 600px;
+}
+
+/* ---- Filters (related control group in one row) --------------------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.select {
+  border: none;
+  background: #fff;
+  border-radius: 13px;
+  padding: 12px 15px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1b1b1a;
+  outline: none;
+  box-shadow: 0 1px 3px rgba(27, 27, 26, 0.05);
+  cursor: pointer;
+}
+
+/* ---- Single-column list --------------------------------------------- */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  display: block;
+  background: #fff;
+  border-radius: 20px;
+  padding: 22px 28px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+  color: inherit;
+}
+
+/* Reported entries link to the report → give them a hover affordance. */
+.cardLink {
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+
+.cardLink:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(27, 27, 26, 0.05), 0 16px 40px rgba(27, 27, 26, 0.09);
+  color: inherit;
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.service {
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.category {
+  font-size: 15px;
+  font-weight: 500;
+  color: #8a897f;
+  margin: 0 0 16px;
+  text-transform: capitalize;
+}
+
+.statusPill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.statusReported {
+  background: #eaf6f4;
+  color: #0c8578;
+}
+
+.statusSilent {
+  background: #f2f1ed;
+  color: #8a897f;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Foot: timestamp on the left, a "View report" cue on the right (reported only). */
+.cardFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0efeb;
+}
+
+.when {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #a3a299;
+}
+
+.whenDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f9e8f;
+  box-shadow: 0 0 0 3px rgba(15, 158, 143, 0.16);
+  flex-shrink: 0;
+}
+
+.versionTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f2f1ed;
+  color: #8a897f;
+}
+
+.viewReport {
+  flex-shrink: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f9e8f;
+  white-space: nowrap;
+}
+
+/* ---- Empty state ----------------------------------------------------- */
+
+.empty {
+  background: #fff;
+  border-radius: 22px;
+  padding: 56px 44px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+.emptyTitle {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 0 10px;
+}
+
+.emptyText {
+  font-size: 17px;
+  line-height: 1.5;
+  color: #6b6a63;
+  margin: 0 auto 26px;
+  max-width: 440px;
+}
+
+.emptyBtn {
+  display: inline-block;
+  background: #0f9e8f;
+  color: #fff;
+  border-radius: 14px;
+  padding: 15px 26px;
+  font-size: 15.5px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(15, 158, 143, 0.3);
+  transition: background 0.18s, transform 0.18s;
+}
+
+.emptyBtn:hover {
+  background: #0c8578;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* Compact empty when filters exclude everything (list is otherwise non-empty). */
+.emptyMini {
+  background: #fff;
+  border-radius: 20px;
+  padding: 26px 30px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #8a897f;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}

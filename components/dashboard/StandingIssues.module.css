@@ -1,0 +1,76 @@
+/*
+ * StandingIssues.module.css — the collapsible-per-service bits for the Dashboard
+ * "Standing issues" section. Shared card/list/tag styles are reused from
+ * Dashboard.module.css; this module only adds the collapsible header, chevron,
+ * severity summary, and expanded footer. Frozen tokens (DESIGN.md).
+ */
+
+/* Full-width clickable header row that toggles expand/collapse. */
+.header {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.headMain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Category line inside the header (tight spacing; no card-margin). */
+.headCategory {
+  font-size: 15px;
+  font-weight: 500;
+  color: #8a897f;
+  text-transform: capitalize;
+}
+
+/* Severity-count summary, e.g. "2 Critical · 5 Important". */
+.summary {
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b6a63;
+}
+
+.chevron {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-right: 2.5px solid #8a897f;
+  border-bottom: 2.5px solid #8a897f;
+  transform: rotate(45deg);
+  transition: transform 0.18s;
+  margin-top: 6px;
+}
+
+.chevronOpen {
+  transform: rotate(-135deg);
+  margin-top: 10px;
+}
+
+/* Expanded body: the full issue list + the deep-link, revealed on open. */
+.body {
+  margin-top: 18px;
+}
+
+.adjust {
+  display: inline-block;
+  margin-top: 18px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f9e8f;
+}
+
+.adjust:hover {
+  color: #0c8578;
+}

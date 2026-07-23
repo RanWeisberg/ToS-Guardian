@@ -18,11 +18,11 @@ import {
   getReportAnswerRows,
   computeStandingIssues,
   listRecentReports,
-  listActiveServices,
+  listServicesWithIssueCounts,
 } from "@/lib/db";
-import type { Classification } from "@/lib/contracts";
 import type { ReportStatus } from "@/lib/db";
 import AppShell from "@/components/shell/AppShell";
+import StandingIssues from "@/components/dashboard/StandingIssues";
 import styles from "@/components/dashboard/Dashboard.module.css";
 
 export const dynamic = "force-dynamic";
@@ -47,15 +47,6 @@ function formatDate(iso: string): string {
   });
 }
 
-/** Friendly severity label + tag class per classification (only bad/blocker can
- *  ever surface as a standing issue; good/neutral are mapped for totality). */
-const ISSUE_TAG: Record<Classification, { label: string; cls: string }> = {
-  good: { label: "Looks fine", cls: styles.tagBad },
-  neutral: { label: "Worth noting", cls: styles.tagBad },
-  bad: { label: "Important", cls: styles.tagBad },
-  blocker: { label: "Critical", cls: styles.tagBlocker },
-};
-
 /** Report status → recent-activity label + pill class. */
 const STATUS_PILL: Record<ReportStatus, { label: string; cls: string }> = {
   pending: { label: "Waiting for you", cls: styles.statusWaiting },
@@ -67,8 +58,11 @@ export default async function DashboardPage() {
     listPendingReports(),
     computeStandingIssues(),
     listRecentReports(),
-    listActiveServices(),
+    listServicesWithIssueCounts(),
   ]);
+  // Dashboard shows only the top 5 (already sorted newest-review-first); the full
+  // list + unsubscribe live on the Services tab.
+  const topServices = services.slice(0, 5);
 
   // Answered progress per pending report, from THAT report's own answer rows.
   // (Legacy/pre-migration reports with no answer rows → all points unanswered.)
@@ -144,47 +138,10 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        {/* 2. Standing issues */}
+        {/* 2. Standing issues (collapsible per service) */}
         <section className={styles.section}>
           <h2 className={styles.sectionHeading}>Standing issues</h2>
-          {standingIssues.length === 0 ? (
-            <div className={styles.emptyMini}>
-              No standing issues — nothing you&apos;ve flagged is currently a problem.
-            </div>
-          ) : (
-            <div className={styles.list}>
-              {standingIssues.map((s) => {
-                // Deep-link into the Preferences hub: preselect this service's
-                // category and filter to exactly its problematic cases.
-                const caseIds = s.issues
-                  .map((issue) => encodeURIComponent(issue.case_id))
-                  .join(",");
-                const href = `/preferences?category=${encodeURIComponent(s.category)}&cases=${caseIds}`;
-                return (
-                  <Link key={s.service} href={href} className={styles.card}>
-                    <div className={styles.cardTop}>
-                      <h3 className={styles.service}>{s.service}</h3>
-                      <span className={styles.tuneHint}>Adjust in Preferences →</span>
-                    </div>
-                    <p className={styles.category}>{s.category}</p>
-                    <ul className={styles.issueList}>
-                      {s.issues.map((issue) => {
-                        const tag = ISSUE_TAG[issue.classification];
-                        return (
-                          <li key={issue.case_id} className={styles.issueRow}>
-                            <span className={`${styles.issueTag} ${tag.cls}`}>
-                              {tag.label}
-                            </span>
-                            <span className={styles.issueTitle}>{issue.title}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
+          <StandingIssues issues={standingIssues} />
         </section>
 
         {/* 3. Recent activity */}
@@ -224,23 +181,37 @@ export default async function DashboardPage() {
           {services.length === 0 ? (
             <div className={styles.emptyMini}>You&apos;re not tracking any services yet.</div>
           ) : (
-            <div className={styles.list}>
-              {services.map((s) => (
-                <div key={s.service} className={styles.staticCard}>
-                  <div className={styles.cardTop}>
-                    <h3 className={styles.service}>{s.service}</h3>
-                    <span className={styles.versionTag}>v{s.latestVersion}</span>
+            <>
+              <div className={styles.list}>
+                {topServices.map((s) => (
+                  <div key={s.service} className={styles.staticCard}>
+                    <div className={styles.cardTop}>
+                      <h3 className={styles.service}>{s.service}</h3>
+                      <span className={styles.versionTag}>v{s.latestVersion}</span>
+                    </div>
+                    <p className={styles.category}>{s.category}</p>
+                    <div className={styles.cardFoot}>
+                      <span className={styles.progress}>
+                        <span className={styles.progressDot} />
+                        Last reviewed {formatTimestamp(s.lastReviewedAt)}
+                      </span>
+                      <span
+                        className={
+                          s.issueCount > 0 ? styles.svcIssuesOpen : styles.svcIssuesClear
+                        }
+                      >
+                        {s.issueCount > 0
+                          ? `${s.issueCount} ${s.issueCount === 1 ? "issue" : "issues"}`
+                          : "No issues"}
+                      </span>
+                    </div>
                   </div>
-                  <p className={styles.category}>{s.category}</p>
-                  <div className={styles.cardFoot}>
-                    <span className={styles.progress}>
-                      <span className={styles.progressDot} />
-                      Last reviewed {formatTimestamp(s.lastReviewedAt)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              <Link href="/services" className={styles.seeAll}>
+                See all services →
+              </Link>
+            </>
           )}
         </section>
       </div>
