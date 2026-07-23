@@ -15,7 +15,6 @@ import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "@/lib/config";
 import type {
   ReportPoint,
-  PreferenceUpdate,
   ClauseCaseClassification,
   Classification,
 } from "@/lib/contracts";
@@ -45,7 +44,10 @@ export interface AgreementVersion {
   created_at: string;
 }
 
-/** A user or default preference stance, keyed by (case × category). */
+/** A stance keyed by (case × category). The `preferences` table it mirrored was
+ *  retired in migration 4c; this type is retained only because the frozen
+ *  StateWriterInput.preferenceUpdates contract references Preference["stance"]
+ *  (via PreferenceUpdate in lib/contracts.ts). No code reads a preferences table. */
 export interface Preference {
   id: number;
   case_id: string;
@@ -187,91 +189,11 @@ export async function setReportStatus(id: string, status: ReportStatus): Promise
   }
 }
 
-// ---------------------------------------------------------------------------
-// preferences — user-preference writes/reads (Phase 7 Step D)
-// ---------------------------------------------------------------------------
-
-const PREFERENCES_TABLE = "preferences";
-
-/** The single source of truth for WRITING user preferences: upsert each update
- *  onto the (case_id, category) key with source='user' and updated_at=now().
- *  A no-op for an empty list. Throws loudly on failure (CLAUDE.md §7). */
-export async function upsertPreferences(updates: PreferenceUpdate[]): Promise<void> {
-  if (updates.length === 0) return;
-  const rows = updates.map((u) => ({
-    case_id: u.case_id,
-    category: u.category,
-    stance: u.stance,
-    source: "user" as const,
-    updated_at: new Date().toISOString(),
-  }));
-  const { error } = await supabase
-    .from(PREFERENCES_TABLE)
-    .upsert(rows, { onConflict: "case_id,category" });
-  if (error) {
-    throw new Error(
-      `db.upsertPreferences: failed to upsert ${rows.length} preference(s): ${error.message}`,
-    );
-  }
-}
-
-/** Every preferences row (defaults + user overrides). [] when none. Throws loudly
- *  on error (no silent fallback — CLAUDE.md §7). Used by the Preferences tab to
- *  resolve each case's stance per category. */
-export async function listAllPreferences(): Promise<Preference[]> {
-  const { data, error } = await supabase.from(PREFERENCES_TABLE).select("*");
-  if (error) {
-    throw new Error(`db.listAllPreferences: failed to read preferences: ${error.message}`);
-  }
-  return (data as Preference[] | null) ?? [];
-}
-
-/** Of the given case_ids, which already carry a source='user' preference at
- *  `category`. Used to decide whether a report has been fully answered. */
-export async function getUserPreferenceCaseIds(
-  caseIds: string[],
-  category: string,
-): Promise<string[]> {
-  if (caseIds.length === 0) return [];
-  const { data, error } = await supabase
-    .from(PREFERENCES_TABLE)
-    .select("case_id")
-    .eq("category", category)
-    .eq("source", "user")
-    .in("case_id", caseIds);
-  if (error) {
-    throw new Error(
-      `db.getUserPreferenceCaseIds: failed to read user preferences: ${error.message}`,
-    );
-  }
-  return (data ?? []).map((r) => r.case_id as string);
-}
-
-/** The user's already-saved stances for the given case_ids at `category`, as a
- *  { case_id -> stance } map (source='user' rows only). Empty input → empty map
- *  (no query). The value type is Preference["stance"] — i.e. FeedbackStance
- *  ("care" | "dont_care") — expressed here without importing feedback.ts to
- *  avoid a circular import. */
-export async function getSavedStances(
-  caseIds: string[],
-  category: string,
-): Promise<Record<string, Preference["stance"]>> {
-  if (caseIds.length === 0) return {};
-  const { data, error } = await supabase
-    .from(PREFERENCES_TABLE)
-    .select("case_id, stance")
-    .eq("category", category)
-    .eq("source", "user")
-    .in("case_id", caseIds);
-  if (error) {
-    throw new Error(`db.getSavedStances: failed to read saved stances: ${error.message}`);
-  }
-  const map: Record<string, Preference["stance"]> = {};
-  for (const row of data ?? []) {
-    map[row.case_id as string] = row.stance as Preference["stance"];
-  }
-  return map;
-}
+// The `preferences` table and its helpers were retired in migration step 4c
+// (dropped via supabase/drop_preferences.sql). All stance state now lives in the
+// `answers` table (see the answers section below). The `Preference` type above is
+// retained only because the frozen StateWriterInput.preferenceUpdates contract
+// still references Preference["stance"] via PreferenceUpdate (lib/contracts.ts).
 
 // ---------------------------------------------------------------------------
 // agreement_versions — Dashboard read views (Phase 7 Step D). Read-only, no LLM.
@@ -399,10 +321,17 @@ export async function listRecentActivity(limit = 6): Promise<RecentActivity[]> {
 
 /**
  * The derived standing-issues view (NO LLM): for each active service's latest
- * version, the cases whose resolved stance is 'care' AND whose classification is
- * problematic. Stance resolution: a preferences row at (case_id, service.category)
- * wins; else (case_id, '*'); missing is treated as 'dont_care'. Returns only
- * services with >=1 issue. [] when none. Throws loudly on error (CLAUDE.md §7).
+ * version, the PROBLEMATIC (bad|blocker) cases the user still cares about.
+ *
+ * Stance resolution reads the ANSWER LOG (not preferences), across services, for
+ * each involved (case_id × category):
+ *   - any answered row with stance='care' → care (it's an issue);
+ *   - answered rows all 'dont_care'        → dont_care (user opted out → not an issue);
+ *   - NO answered rows                      → ToS;DR severity default (bad|blocker ⇒
+ *     care), so a freshly-onboarded service's problematic clauses still surface
+ *     before the user has answered anything.
+ *
+ * Returns only services with >=1 issue. [] when none. Throws loudly on error.
  */
 export async function computeStandingIssues(): Promise<StandingIssueService[]> {
   const { data, error } = await supabase
@@ -435,43 +364,52 @@ export async function computeStandingIssues(): Promise<StandingIssueService[]> {
     cases: indexCaseMeta(r.classifications ?? []),
   }));
 
-  // One preferences read for every involved (case_id) across the involved
-  // categories plus the general '*' default.
+  // Involved PROBLEMATIC case_ids + the involved categories (answers has no '*'
+  // general default — every row carries a real category).
   const caseIds = new Set<string>();
-  const categories = new Set<string>(["*"]);
+  const categories = new Set<string>();
   for (const s of perService) {
     categories.add(s.category);
-    for (const id of s.cases.keys()) caseIds.add(id);
+    for (const [caseId, meta] of s.cases) {
+      if (PROBLEMATIC_CLASSIFICATIONS.has(meta.classification)) caseIds.add(caseId);
+    }
   }
   if (caseIds.size === 0) return [];
 
-  const { data: prefData, error: prefErr } = await supabase
-    .from(PREFERENCES_TABLE)
+  // One answers read for those (case_id × category) pairs, across all services,
+  // ANSWERED rows only (stance not null).
+  const { data: ansData, error: ansErr } = await supabase
+    .from(ANSWERS_TABLE)
     .select("case_id, category, stance")
     .in("case_id", [...caseIds])
-    .in("category", [...categories]);
-  if (prefErr) {
-    throw new Error(`db.computeStandingIssues: failed to read preferences: ${prefErr.message}`);
+    .in("category", [...categories])
+    .not("stance", "is", null);
+  if (ansErr) {
+    throw new Error(`db.computeStandingIssues: failed to read answers: ${ansErr.message}`);
   }
-  const stanceByKey = new Map<string, Preference["stance"]>();
-  for (const p of (prefData ?? []) as {
-    case_id: string;
-    category: string;
-    stance: Preference["stance"];
-  }[]) {
-    stanceByKey.set(`${p.case_id}|${p.category}`, p.stance);
+  // Per (case|category): does any answered row say 'care', and is there any row?
+  const careKeys = new Set<string>();
+  const answeredKeys = new Set<string>();
+  for (const a of (ansData ?? []) as { case_id: string; category: string; stance: string }[]) {
+    const key = `${a.case_id}|${a.category}`;
+    answeredKeys.add(key);
+    if (a.stance === "care") careKeys.add(key);
   }
 
   const result: StandingIssueService[] = [];
   for (const s of perService) {
     const issues: StandingIssue[] = [];
     for (const [caseId, meta] of s.cases) {
-      // Exact (case, category) wins; else general (case, '*'); else 'dont_care'.
-      const stance =
-        stanceByKey.get(`${caseId}|${s.category}`) ??
-        stanceByKey.get(`${caseId}|*`) ??
-        "dont_care";
-      if (stance === "care" && PROBLEMATIC_CLASSIFICATIONS.has(meta.classification)) {
+      if (!PROBLEMATIC_CLASSIFICATIONS.has(meta.classification)) continue;
+      const key = `${caseId}|${s.category}`;
+      // any 'care' → care; else if answered → dont_care; else severity default
+      // (problematic ⇒ care).
+      const cares = careKeys.has(key)
+        ? true
+        : answeredKeys.has(key)
+          ? false
+          : PROBLEMATIC_CLASSIFICATIONS.has(meta.classification);
+      if (cares) {
         issues.push({ case_id: caseId, title: meta.title, classification: meta.classification });
       }
     }
@@ -500,10 +438,10 @@ export async function listCategories(): Promise<string[]> {
 // ---------------------------------------------------------------------------
 // answers — the answer log (PROJECT_SPEC §5; see supabase/answers.sql).
 //
-// ADDITIVE (migration step 1): this lives ALONGSIDE the `preferences` table and
-// its helpers above. Nothing here reads or writes `preferences`. The answer log
-// is the growing, human-facing record of every material clause the user has been
-// shown and how they responded — one row per (service × case × category).
+// The single store for stance state (the `preferences` table was retired in
+// migration 4c). The answer log is the growing, human-facing record of every
+// material clause the user has been shown and how they responded — one row per
+// (service × case × category).
 // ---------------------------------------------------------------------------
 
 const ANSWERS_TABLE = "answers";
@@ -653,4 +591,78 @@ export async function getReportStances(
     if (r.stance !== null) map[r.case_id] = r.stance;
   }
   return map;
+}
+
+/** The service name for a stance the user set directly in the Preferences tab
+ *  (not tied to a report). Kept distinct from real services in the answer log. */
+export const STANDALONE_ANSWER_SERVICE = "(your preference)";
+
+/** All ANSWERED answer rows (stance not null), newest updated_at first — the
+ *  Preferences tab's answer log. [] when none. Throws loudly on error. */
+export async function listAnsweredAnswers(): Promise<AnswerRow[]> {
+  const { data, error } = await supabase
+    .from(ANSWERS_TABLE)
+    .select("*")
+    .not("stance", "is", null)
+    .order("updated_at", { ascending: false });
+  if (error) {
+    throw new Error(`db.listAnsweredAnswers: failed to read answers: ${error.message}`);
+  }
+  return (data as AnswerRow[] | null) ?? [];
+}
+
+/** Set the stance on EVERY existing answer row for (case_id × category), across
+ *  services (flips answered=true, bumps updated_at). Returns how many rows were
+ *  updated — 0 means no row exists yet (the caller then writes a standalone one).
+ *  Throws loudly on error (CLAUDE.md §7). */
+export async function setStanceForCase(
+  caseId: string,
+  category: string,
+  stance: "care" | "dont_care",
+): Promise<number> {
+  const { data, error } = await supabase
+    .from(ANSWERS_TABLE)
+    .update({ stance, answered: true, updated_at: new Date().toISOString() })
+    .eq("case_id", caseId)
+    .eq("category", category)
+    .select("id");
+  if (error) {
+    throw new Error(
+      `db.setStanceForCase: failed to set stance for "${caseId}" / "${category}": ${error.message}`,
+    );
+  }
+  return (data ?? []).length;
+}
+
+/** Upsert a STANDALONE answer row for a first-time stance set from the Preferences
+ *  tab: service=STANDALONE_ANSWER_SERVICE, agreement_version=0, report_id=null,
+ *  answered=true. Upsert on (service, case_id, category) so re-adjusting updates
+ *  in place. Throws loudly on error (CLAUDE.md §7). */
+export async function setStandaloneStance(input: {
+  case_id: string;
+  category: string;
+  clause: string;
+  explanation: string;
+  stance: "care" | "dont_care";
+}): Promise<void> {
+  const { error } = await supabase.from(ANSWERS_TABLE).upsert(
+    {
+      service: STANDALONE_ANSWER_SERVICE,
+      category: input.category,
+      case_id: input.case_id,
+      clause: input.clause,
+      explanation: input.explanation,
+      agreement_version: 0,
+      stance: input.stance,
+      answered: true,
+      report_id: null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "service,case_id,category" },
+  );
+  if (error) {
+    throw new Error(
+      `db.setStandaloneStance: failed to set standalone stance for "${input.case_id}" / "${input.category}": ${error.message}`,
+    );
+  }
 }

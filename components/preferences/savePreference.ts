@@ -1,9 +1,9 @@
 /**
  * components/preferences/savePreference.ts — a tiny client-side caller for the
- * POST /api/preferences route. Front-end only: it sends { case_id, category,
- * stance } and returns the parsed { ok, error? } result. It only synthesizes an
- * error result when the body isn't the expected JSON; a thrown fetch (network
- * failure) propagates to the caller.
+ * POST /api/preferences route (which writes the answer log). Front-end only: it
+ * sends { case_id, category, stance, clause?, explanation? } and returns the
+ * parsed { ok, error? } result. It only synthesizes an error result when the body
+ * isn't the expected JSON; a thrown fetch (network failure) propagates.
  */
 
 import type { FeedbackStance } from "@/components/report-detail/ReportDetail";
@@ -17,11 +17,13 @@ export async function savePreference(
   caseId: string,
   category: string,
   stance: FeedbackStance,
+  clause?: string,
+  explanation?: string,
 ): Promise<SavePreferenceResult> {
   const res = await fetch("/api/preferences", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ case_id: caseId, category, stance }),
+    body: JSON.stringify({ case_id: caseId, category, stance, clause, explanation }),
   });
 
   try {

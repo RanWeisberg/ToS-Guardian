@@ -2,9 +2,13 @@
  * lib/modules/stateWriter.ts — Module 8 of the eight-module core (PROJECT_SPEC §4 row 8).
  *
  * StateWriter persists the new agreement version (raw text + clause→case classifications)
- * to the Supabase version store, applies the re-add/active logic (§8), and upserts any
- * per-point preference feedback. All cross-call state lives in Supabase — never on the
- * serverless filesystem (CLAUDE.md §2).
+ * to the Supabase version store and applies the re-add/active logic (§8). All cross-call
+ * state lives in Supabase — never on the serverless filesystem (CLAUDE.md §2).
+ *
+ * NOTE (migration 4c): the retired `preferences` table is gone. Per-point feedback is
+ * recorded in the `answers` table via /api/feedback → applyReportFeedback, NOT here. The
+ * frozen StateWriterInput still carries an optional `preferenceUpdates` field, but it is
+ * intentionally ignored — the orchestrator never sends it.
  *
  * MECHANICAL: this module makes NO LLM call and records NO trace Step — persistence is
  * not part of the LLM `steps` trace (CLAUDE.md §4/§5/§7). It never calls tracer.add.
@@ -13,7 +17,7 @@
  */
 
 import type { StateWriterInput, StateWriterOutput } from "@/lib/contracts";
-import { supabase, upsertPreferences } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import type { Tracer } from "@/lib/trace";
 
 const VERSIONS_TABLE = "agreement_versions";
@@ -25,7 +29,7 @@ export async function runStateWriter(
   input: StateWriterInput,
   _tracer: Tracer,
 ): Promise<StateWriterOutput> {
-  const { service, category, version, raw_text, classifications, preferenceUpdates } = input;
+  const { service, category, version, raw_text, classifications } = input;
 
   // --- Re-add / active logic (§8): writing a version for a service reactivates it.
   //     Only touch soft-flagged (inactive) rows so a normal write is a no-op. ---
@@ -79,12 +83,9 @@ export async function runStateWriter(
     }
   }
 
-  // --- Preference feedback (§5, §7): per-point user overrides win over defaults.
-  //     Delegated to the single source of truth for preference writes
-  //     (db.upsertPreferences → source='user' on the (case_id, category) key). ---
-  if (preferenceUpdates && preferenceUpdates.length > 0) {
-    await upsertPreferences(preferenceUpdates);
-  }
+  // Per-point feedback is NOT written here (migration 4c): it lives in the
+  // `answers` table via /api/feedback. `input.preferenceUpdates`, if present, is
+  // intentionally ignored — the orchestrator never sends it.
 
   return { versionId, written };
 }

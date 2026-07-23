@@ -6,16 +6,15 @@
  * service) and its answer-log rows, then CLEANS UP everything it created so the
  * tables are left pristine. Makes NO LLM call.
  *
- * As of step 3, feedback writes to the `answers` table (setAnswer), and completion
- * is derived from the report's answer rows. This test also asserts the feedback
- * path writes NO `preferences` rows anymore.
+ * Feedback writes to the `answers` table (setAnswer), and completion is derived
+ * from the report's answer rows. (The `preferences` table was retired in migration
+ * 4c, so there is nothing there to check.)
  *
  *   (1) PARTIAL feedback (CASE_A only) → answered=false, report 'pending',
  *       CASE_A answer row set (care), CASE_B still unanswered.
  *   (2) REMAINING (CASE_B) → answered=true, report 'answered'.
  *   (3) getReportStances returns the right { case_id -> stance } map.
- *   (4) NO preferences rows were written by the feedback path.
- *   (5) cleanup → delete the throwaway report + answers.
+ *   (4) cleanup → delete the throwaway report + answers.
  *
  * Run with:  npx tsx --env-file=.env.local scripts-ts/test_feedback.ts
  */
@@ -76,12 +75,6 @@ function answerRow(reportId: string, caseId: string, title: string): NewAnswerRo
 async function cleanup() {
   await supabase.from("answers").delete().eq("service", TEST_SERVICE);
   await supabase.from("reports").delete().eq("service", TEST_SERVICE);
-  // Defensive: the feedback path must not write these, but pre-clean regardless.
-  await supabase
-    .from("preferences")
-    .delete()
-    .eq("category", TEST_CATEGORY)
-    .in("case_id", [CASE_A, CASE_B]);
 }
 
 async function main() {
@@ -145,19 +138,9 @@ async function main() {
     assert(stances[CASE_A] === "care" && stances[CASE_B] === "dont_care", "stance map matches answers");
     assert(Object.keys(stances).length === 2, "exactly the two answered cases");
 
-    // (4) NO preferences rows written by the feedback path.
-    console.log("\n--- (4) no preferences written ---");
-    const { count: prefCount } = await supabase
-      .from("preferences")
-      .select("id", { count: "exact", head: true })
-      .eq("category", TEST_CATEGORY)
-      .in("case_id", [CASE_A, CASE_B]);
-    console.log(`preferences rows for test keys: ${prefCount}`);
-    assert(prefCount === 0, "feedback path wrote NO preferences rows");
-
     console.log("\n✅ all feedback assertions passed");
   } finally {
-    // (5) cleanup — always, even if an assertion failed.
+    // (4) cleanup — always, even if an assertion failed.
     await cleanup();
     const { count: repLeft } = await supabase
       .from("reports")
@@ -168,7 +151,7 @@ async function main() {
       .select("id", { count: "exact", head: true })
       .eq("service", TEST_SERVICE);
     console.log(
-      `\n--- (5) cleanup done — leftover reports: ${repLeft}, answers: ${ansLeft} (expected 0, 0) ---`,
+      `\n--- (4) cleanup done — leftover reports: ${repLeft}, answers: ${ansLeft} (expected 0, 0) ---`,
     );
   }
 }

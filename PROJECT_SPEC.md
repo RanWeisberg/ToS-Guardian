@@ -64,7 +64,7 @@ every description — it's a grading requirement. This is the locked vocabulary.
 | 3 | **ClauseExtractor** | Segments the agreement into meaningful clauses, dropping boilerplate. | Yes |
 | 4 | **CaseClassifier** | Embeds each clause, queries Pinecone for nearest ToS;DR cases, decides which case(s) it maps to with classification + weight. **The RAG core.** | Embedding + LLM judgment |
 | 5 | **VersionDiffer** | Compares the newly classified agreement against the stored prior version to isolate genuine changes vs restated terms. | Mechanical where possible, LLM for judgment |
-| 6 | **MaterialityJudge** | Weighs changes (or onboarding findings) against the user's preference slice + case weights to decide what's worth surfacing. | Yes |
+| 6 | **MaterialityJudge** | Weighs changes (or onboarding findings) against the user's answer history (the `answers` table) + case weights to decide what's worth surfacing. | Yes |
 | 7 | **ReportComposer** | Produces the personalized report — or stays silent if nothing is material. | Yes |
 | 8 | **StateWriter** | Persists the new agreement version, the clause→case classifications, and any preference updates from feedback. | Mechanical |
 
@@ -72,8 +72,8 @@ every description — it's a grading requirement. This is the locked vocabulary.
 routing, classification, diff, materiality — each a documented decision the agent makes
 rather than a fixed transform. The steps trace is where a grader literally sees this.
 
-**Efficiency (graded):** not every module is an LLM call; the preference table is sliced
-before injection; classification is batched. This directly serves the "avoid unnecessary
+**Efficiency (graded):** not every module is an LLM call; only the relevant answer-log rows
+are injected (not the whole log); classification is batched. This directly serves the "avoid unnecessary
 LLM calls / minimize context" criterion and the $13 budget.
 
 ---
@@ -174,7 +174,7 @@ agreements. Satisfies the project's minimal-GUI requirement without a throwaway 
 - **Report detail** — *where the whole thesis lives.* Opens a pending report clause-by-clause:
   what changed, which ToS;DR case it maps to, severity, and **why it matters to you**. Each
   point carries a **feedback control** (care / don't care, agree / disagree) — this is the
-  per-point loop that trains the preference table. Give it first-class space.
+  per-point loop that records the user's answers in the `answers` table. Give it first-class space.
 - **Service drill-down** — click a service → its agreement version history, current grade,
   and standing issues. This is where the version store visibly pays off.
 

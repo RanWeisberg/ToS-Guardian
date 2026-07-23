@@ -9,13 +9,13 @@
  *
  * Server component (dynamic — reads live Supabase state each request). All four
  * datasets are read-only; standing issues are DERIVED from stored classifications
- * + preferences with NO LLM call. Single-column throughout.
+ * + the answer log with NO LLM call. Single-column throughout.
  */
 
 import Link from "next/link";
 import {
   listPendingReports,
-  getSavedStances,
+  getReportAnswerRows,
   computeStandingIssues,
   listRecentReports,
   listActiveServices,
@@ -70,13 +70,19 @@ export default async function DashboardPage() {
     listActiveServices(),
   ]);
 
-  // Answered progress per pending report, from the saved user preferences.
+  // Answered progress per pending report, from THAT report's own answer rows.
+  // (Legacy/pre-migration reports with no answer rows → all points unanswered.)
   const progress = await Promise.all(
     reports.map(async (report) => {
-      const caseIds = report.points.map((p) => p.case_id);
-      const saved = await getSavedStances(caseIds, report.category);
-      const answeredCount = caseIds.filter((id) => id in saved).length;
-      return { answeredCount, total: caseIds.length };
+      const rows = await getReportAnswerRows(report.id);
+      const answeredCaseIds = new Set(
+        rows.filter((r) => r.answered).map((r) => r.case_id),
+      );
+      const total = report.points.length;
+      const answeredCount = report.points.filter((p) =>
+        answeredCaseIds.has(p.case_id),
+      ).length;
+      return { answeredCount, total };
     }),
   );
 
