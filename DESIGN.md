@@ -27,8 +27,8 @@ the trace shape.
 - **Parallel to Phases 3–6.** Design needs only contracts, so it overlaps the backend
   build. By the time the backend is done, design is approved and Phase 7 is a port.
 - **Design on contract-shaped mock data.** Use the real module names, the real `steps`
-  array shape, the real report structure, and preferences grouped by the 26 ToS;DR topics
-  — never invented field names, never a flat 236-row list.
+  array shape, the real report structure, and the answer-log view (one row per clause the
+  user has actually been shown) — never invented field names, never a flat 236-row list.
 - **Freeze the outcome here** the way `CLAUDE.md` freezes build conventions.
 
 ## Two priority screens (high fidelity)
@@ -43,14 +43,15 @@ the wiring step.
 ### 2. Report-detail drill-down (the thesis) — ✅ BUILT
 `components/report-detail/ReportDetail.tsx`. Clause-by-clause: what changed → which ToS;DR
 case it maps to → severity → **why it matters to you**. Each point carries a **feedback
-control** (care / don't care) — the per-point loop that trains the preference table.
-First-class layout.
+control** (care / don't care) — the per-point loop that records the user's answers in the
+answer log. First-class layout.
 
 ## Light pass (layout + tokens only, built in Phase 7 from the spec)
 
 Dashboard (pending reports → standing issues → recent activity → subscribed services),
-Preferences editor (grouped by the 26 topics, cases nested), Log tab, Add-agreement paste
-form. Empty states: greet a fresh deploy with "add your first service," not empty panels.
+Preferences (the answer-log view — one row per clause the user has been shown, filterable),
+Log tab, Add-agreement paste form. Empty states: greet a fresh deploy with "add your first
+service," not empty panels.
 
 ---
 

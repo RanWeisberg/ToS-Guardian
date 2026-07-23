@@ -1,0 +1,459 @@
+/*
+ * Dashboard.module.css — the pending-reports list (Phase 7 Step D).
+ * Tokens match the frozen design language (DESIGN.md): warm light theme, teal
+ * #0f9e8f accent, ~20px rounded white cards with soft diffuse shadows, single
+ * column. Does not restyle the shared shell.
+ */
+
+.wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 52px 40px 64px;
+}
+
+/* ---- Header block ---------------------------------------------------- */
+
+.header {
+  margin-bottom: 32px;
+}
+
+.title {
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 12px;
+  text-wrap: balance;
+}
+
+.subtitle {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #6b6a63;
+  margin: 0;
+  max-width: 600px;
+}
+
+/* ---- Single-column list --------------------------------------------- */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.card {
+  display: block;
+  background: #fff;
+  border-radius: 20px;
+  padding: 26px 30px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+  transition: transform 0.18s, box-shadow 0.18s;
+  color: inherit;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(27, 27, 26, 0.05), 0 16px 40px rgba(27, 27, 26, 0.09);
+  color: inherit;
+}
+
+/* Top row inside the card: service headline + source badge. Contained within a
+ * single card, so this sits within the single-column layout rule. */
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+
+.service {
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.category {
+  font-size: 15px;
+  font-weight: 500;
+  color: #8a897f;
+  margin: 0 0 18px;
+  text-transform: capitalize;
+}
+
+.badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.badgeManual {
+  background: #eaf6f4;
+  color: #0c8578;
+}
+
+.badgeMail {
+  background: #fdf2e1;
+  color: #b8791b;
+}
+
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Bottom row: answered progress + timestamp. Also within one card. */
+.cardFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0efeb;
+}
+
+.progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #57564f;
+}
+
+.progressDone {
+  color: #0c8578;
+}
+
+.progressDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0f9e8f;
+  box-shadow: 0 0 0 3px rgba(15, 158, 143, 0.16);
+}
+
+.timestamp {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #a3a299;
+  white-space: nowrap;
+}
+
+/* ---- Empty state ----------------------------------------------------- */
+
+.empty {
+  background: #fff;
+  border-radius: 22px;
+  padding: 56px 44px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+.emptyTitle {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 0 10px;
+}
+
+.emptyText {
+  font-size: 17px;
+  line-height: 1.5;
+  color: #6b6a63;
+  margin: 0 auto 26px;
+  max-width: 420px;
+}
+
+.emptyBtn {
+  display: inline-block;
+  background: #0f9e8f;
+  color: #fff;
+  border-radius: 14px;
+  padding: 15px 26px;
+  font-size: 15.5px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(15, 158, 143, 0.3);
+  transition: background 0.18s, transform 0.18s;
+}
+
+.emptyBtn:hover {
+  background: #0c8578;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* ---- Stacked sections (priority order, single column) --------------- */
+
+/* Each section reads as distinct: generous top spacing + a soft warm hairline
+ * separator (no hard borders, per the frozen language). */
+.section {
+  margin-top: 44px;
+  padding-top: 44px;
+  border-top: 1px solid #ece9e3;
+}
+
+.section:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.sectionHeading {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 0 18px;
+}
+
+/* Compact per-section empty state (lighter than the hero .empty). */
+.emptyMini {
+  background: #fff;
+  border-radius: 20px;
+  padding: 26px 30px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #8a897f;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+/* Static (non-clickable) card — same look as .card, no hover lift. */
+.staticCard {
+  display: block;
+  background: #fff;
+  border-radius: 20px;
+  padding: 26px 30px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+/* ---- Standing issues ------------------------------------------------- */
+
+.issueList {
+  list-style: none;
+  margin: 0;
+  padding: 16px 0 0;
+  border-top: 1px solid #f0efeb;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.issueRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.issueTag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.tagBad {
+  background: #fce9e6;
+  color: #c0492f;
+}
+
+.tagBlocker {
+  background: #f9dbd4;
+  color: #a3341d;
+}
+
+.issueTitle {
+  font-size: 15.5px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: #57564f;
+}
+
+/* Subtle "goes to Preferences" cue on a standing-issue card. */
+.tuneHint {
+  flex-shrink: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f9e8f;
+  white-space: nowrap;
+}
+
+/* ---- Recent activity ------------------------------------------------- */
+
+.activityCard {
+  background: #fff;
+  border-radius: 20px;
+  padding: 6px 30px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+/* Each row links to its report; rows are separated by hairlines within one card. */
+.activityRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 8px;
+  margin: 0 -8px;
+  border-top: 1px solid #f0efeb;
+  border-radius: 12px;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.activityRow:first-child {
+  border-top: none;
+}
+
+.activityRow:hover {
+  background: #f6f5f2;
+  color: inherit;
+}
+
+.activityText {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 15.5px;
+  color: #57564f;
+}
+
+.activityText strong {
+  font-weight: 700;
+  color: #1b1b1a;
+}
+
+.activityTime {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #a3a299;
+  white-space: nowrap;
+}
+
+/* Report status pill (recent activity). */
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.statusWaiting {
+  background: #eaf6f4;
+  color: #0c8578;
+}
+
+.statusAnswered {
+  background: #f2f1ed;
+  color: #8a897f;
+}
+
+/* ---- Pending reports table ------------------------------------------ */
+
+/* An airy, Apple-like table: a single soft card with hairline row separators
+ * (not a dense grid). Header + link rows share one grid template so columns
+ * align. */
+.table {
+  background: #fff;
+  border-radius: 20px;
+  padding: 6px 30px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}
+
+.tableHead,
+.tableRow {
+  display: grid;
+  grid-template-columns: 2.4fr 0.9fr 1.1fr 1.3fr;
+  align-items: center;
+  gap: 16px;
+}
+
+.tableHead {
+  padding: 16px 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #a3a299;
+}
+
+.tableRow {
+  padding: 18px 8px;
+  margin: 0 -8px;
+  border-top: 1px solid #f0efeb;
+  border-radius: 12px;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.tableRow:hover {
+  background: #f6f5f2;
+  color: inherit;
+}
+
+.tdService {
+  font-size: 16.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #1b1b1a;
+}
+
+.tdNum {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: #57564f;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Zero unanswered reads as resolved — muted; anything outstanding stays teal. */
+.tdUnansweredOpen {
+  color: #0c8578;
+}
+
+.tdUnansweredDone {
+  color: #a3a299;
+}
+
+.tdAdded {
+  font-size: 14px;
+  font-weight: 500;
+  color: #a3a299;
+  white-space: nowrap;
+}
+
+/* ---- Subscribed services -------------------------------------------- */
+
+.versionTag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: #f2f1ed;
+  color: #8a897f;
+  white-space: nowrap;
+}

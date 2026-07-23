@@ -76,8 +76,11 @@ Use **lowercase** `system_prompt` / `user_prompt` (matches the spec's worked exa
 - **Total budget: $13** across the whole project on LLMod.ai. Efficiency is scored.
 - **Batch, don't loop.** Never call the LLM once per clause — classify clauses in a
   single batched call. The same goes for any per-item work.
-- **Slice, don't dump.** Only inject the relevant preference slice (the (case × category)
-  rows that apply), never the full 236-row table. Keep prompts minimal.
+- **Slice, don't dump.** Judgment reasons from the ToS;DR taxonomy (severity / weight /
+  description) as its always-on base layer; on top of that, inject only the relevant
+  `answers` rows — those for the (case × category) being judged — never the whole answer
+  log. (Memory is the `answers` table, not the retired `preferences` table — see
+  PROJECT_SPEC §5.) Keep prompts minimal.
 - Only the five modules in §3 may call the LLM. If you're about to add a sixth LLM call,
   stop and flag it.
 
@@ -103,7 +106,7 @@ Use **lowercase** `system_prompt` / `user_prompt` (matches the spec's worked exa
 
 - Do not add local/filesystem/in-memory cross-call state.
 - Do not retype module names as string literals.
-- Do not loop the LLM per clause, or inject the full preference table.
+- Do not loop the LLM per clause, or inject the full answer log (the `answers` table).
 - Do not change the `/api/execute` envelope shape.
 - Do not commit `.env` or hardcode any secret.
 - Do not modify the finished Python ingestion scripts.

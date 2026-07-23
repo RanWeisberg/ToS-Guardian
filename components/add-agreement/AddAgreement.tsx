@@ -55,8 +55,9 @@ export interface AddAgreementProps {
   onSeeResults?: (reportId: string) => void;
 }
 
-/** The run lifecycle for one review. */
-type RunState = "initial" | "loading" | "success" | "error";
+/** The transient lifecycle of the CURRENT interaction. Whether a completed live
+ *  run exists is derived from the persisted context `runResult`, not from here. */
+type RunState = "initial" | "loading" | "error";
 
 // --- Safe, read-only accessors over the (typed-as-unknown) Step.response ------
 // Each reads ONLY real contract field names (lib/contracts.ts) and degrades
@@ -115,28 +116,35 @@ export default function AddAgreement({
   done: sampleDone = false,
   onSeeResults,
 }: AddAgreementProps) {
-  // Service + agreement text live in the draft context so they SURVIVE navigating
-  // to a report and back (the page unmounts; the context, mounted in the root
-  // layout, does not). Cleared only after a report is fully answered.
-  const { service, agreement, setService, setAgreement } = useAgreementDraft();
+  // Service + agreement text AND the last live run's result live in the draft
+  // context so they SURVIVE navigating to a report and back (the page unmounts;
+  // the context, mounted in the root layout, does not). All cleared together only
+  // after a report is fully answered.
+  // TOKEN-SAVING GUARD (lastSubmitted): the exact agreement text last SUBMITTED to
+  // /api/execute. It lives in context too, so an already-reviewed agreement stays
+  // guarded across navigation; clearDraft() (full answer) re-enables a fresh run.
+  const {
+    service,
+    agreement,
+    setService,
+    setAgreement,
+    runResult,
+    setRunResult,
+    lastSubmitted,
+    setLastSubmitted,
+  } = useAgreementDraft();
   const [runState, setRunState] = useState<RunState>("initial");
-  const [liveSteps, setLiveSteps] = useState<Step[]>([]);
-  const [response, setResponse] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [validationHint, setValidationHint] = useState<string | null>(null);
-  // The persisted report id from the last successful run (enables "See what I
-  // found →" and the /report/[id] navigation).
-  const [reportId, setReportId] = useState<string | null>(null);
-  // TOKEN-SAVING GUARD: the exact agreement text last SUBMITTED to /api/execute.
-  // The run button stays disabled while the textarea still holds this text, so an
-  // identical agreement can't be re-run and waste budget.
-  const [lastSubmitted, setLastSubmitted] = useState<string | null>(null);
 
   // Before the first live run we show the sample trace (the design-mock state);
-  // once a run succeeds we show only the real data returned by /api/execute.
-  const showingLive = runState === "success";
-  const displaySteps = showingLive ? liveSteps : sampleSteps;
-  const isDone = showingLive ? true : sampleDone;
+  // once a run has completed we show the real data (restored from context after
+  // navigation). `runResult` presence is the source of truth for "showing live".
+  const showingLive = runResult !== null;
+  const displaySteps = runResult ? runResult.steps : sampleSteps;
+  const isDone = runResult ? true : sampleDone;
+  const reportId = runResult?.reportId ?? null;
+  const response = runResult?.response ?? null;
   const loading = runState === "loading";
 
   // Already reviewed this exact agreement → block re-submitting it (budget).
@@ -165,7 +173,6 @@ export default function AddAgreement({
 
     setValidationHint(null);
     setErrorMessage(null);
-    setResponse(null);
     setRunState("loading");
 
     // Frame the input as an onboarding request. No category — the agent infers it.
@@ -174,13 +181,16 @@ export default function AddAgreement({
     try {
       const { data, reportId: newReportId } = await runExecute(prompt);
       if (data.status === "ok") {
-        setLiveSteps(data.steps ?? []);
-        setResponse(data.response);
-        setReportId(newReportId);
+        // Persist the run result to context so it survives navigation.
+        setRunResult({
+          steps: data.steps ?? [],
+          response: data.response,
+          reportId: newReportId,
+        });
         // Remember what we just reviewed → keep the run button disabled until the
         // agreement text changes. Only on success (errors stay retryable).
         setLastSubmitted(text);
-        setRunState("success");
+        setRunState("initial");
       } else {
         setErrorMessage(
           data.error ?? "Something went wrong while reviewing this agreement.",

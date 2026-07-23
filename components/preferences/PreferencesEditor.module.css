@@ -1,0 +1,332 @@
+/*
+ * PreferencesEditor.module.css — the Preferences tab.
+ * Frozen design language (DESIGN.md): warm #faf9f7, teal #0f9e8f, ~20px rounded
+ * white cards, soft diffuse shadows, single column, collapsible topic groups.
+ */
+
+.wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 52px 40px 64px;
+}
+
+.header {
+  margin-bottom: 28px;
+}
+
+.title {
+  font-size: 46px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 12px;
+  text-wrap: balance;
+}
+
+.subtitle {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #6b6a63;
+  margin: 0;
+  max-width: 600px;
+}
+
+/* ---- Category selector (one related group in a row) ------------------ */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.toolbarLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #8a897f;
+}
+
+.select {
+  flex: 1;
+  max-width: 340px;
+  border: none;
+  background: #fff;
+  border-radius: 13px;
+  padding: 12px 15px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1b1b1a;
+  outline: none;
+  box-shadow: 0 1px 3px rgba(27, 27, 26, 0.05);
+  cursor: pointer;
+}
+
+/* ---- Filter notice --------------------------------------------------- */
+
+.filterNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  background: #eaf6f4;
+  color: #0c8578;
+  border-radius: 14px;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.filterClear {
+  border: none;
+  background: transparent;
+  color: #0c8578;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ---- Collapsible topic groups --------------------------------------- */
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.group {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+  overflow: hidden;
+}
+
+.groupHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 28px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.groupHeader:hover {
+  background: #f6f5f2;
+}
+
+.groupHeadLeft {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.groupName {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #1b1b1a;
+}
+
+.groupCount {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a3a299;
+}
+
+.chevron {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-right: 2.5px solid #8a897f;
+  border-bottom: 2.5px solid #8a897f;
+  transform: rotate(45deg);
+  transition: transform 0.18s;
+  margin-top: -3px;
+}
+
+.chevronOpen {
+  transform: rotate(-135deg);
+  margin-top: 3px;
+}
+
+.groupBody {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Case row -------------------------------------------------------- */
+
+.caseRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 28px;
+  border-top: 1px solid #f0efeb;
+}
+
+.caseMain {
+  min-width: 0;
+}
+
+.caseTitle {
+  font-size: 15.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: #1b1b1a;
+  margin: 0 0 8px;
+}
+
+.caseTags {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sevTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.sevGood {
+  background: #eaf6f4;
+  color: #0c8578;
+}
+
+.sevNeutral {
+  background: #fdf2e1;
+  color: #b8791b;
+}
+
+.sevBad {
+  background: #fce9e6;
+  color: #c0492f;
+}
+
+.sevBlocker {
+  background: #f9dbd4;
+  color: #a3341d;
+}
+
+/* "Set for this category" vs "inherited" distinction. */
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.statusSet {
+  color: #0c8578;
+}
+
+.statusSetDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0f9e8f;
+}
+
+.statusInherited {
+  color: #a3a299;
+  font-style: italic;
+}
+
+/* ---- Care / don't-care toggle (mirrors ReportDetail) ---------------- */
+
+.toggle {
+  display: inline-flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tgBtn {
+  border: none;
+  border-radius: 100px;
+  padding: 9px 15px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.tgBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.care {
+  background: #eaf6f4;
+  color: #0c8578;
+}
+
+.care:hover:not(:disabled) {
+  background: #d8efeb;
+}
+
+.careSel {
+  background: #0f9e8f;
+  color: #fff;
+}
+
+.careSel:hover:not(:disabled) {
+  background: #0c8578;
+}
+
+.dont {
+  background: #f2f1ed;
+  color: #8a897f;
+}
+
+.dont:hover:not(:disabled) {
+  background: #e8e6e0;
+}
+
+.dontSel {
+  background: #57564f;
+  color: #fff;
+}
+
+.dontSel:hover:not(:disabled) {
+  background: #46453f;
+}
+
+.rowError {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #c0492f;
+  margin: 6px 0 0;
+}
+
+/* ---- Empty ----------------------------------------------------------- */
+
+.empty {
+  background: #fff;
+  border-radius: 20px;
+  padding: 26px 30px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #8a897f;
+  box-shadow: 0 2px 4px rgba(27, 27, 26, 0.03), 0 12px 32px rgba(27, 27, 26, 0.06);
+}

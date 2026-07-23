@@ -87,9 +87,38 @@ LLM calls / minimize context" criterion and the $13 budget.
   own version history is not dependable). Seeded by onboarding; appended on each change.
   **Also stores the clause→case classifications**, not just raw text — so the dashboard can
   re-flag standing issues when preferences change *without re-running the classifier*.
-- **Preference table → Supabase.** ⏳ Pending. Keyed by **(case × service category)**.
-  Only a filtered relevant slice is injected into prompts. Fallback hierarchy:
-  exact case-category match → general case stance → ToS;DR severity default.
+- **Answer log → Supabase (`answers` table).** Replaces the former `preferences`
+  table. The human-facing, growing record of every material clause the user has been
+  shown and how they responded. One row per (service × case × category), columns:
+  service, category, case_id, clause (plain-language finding text), explanation (why
+  it matters), agreement_version, stance (care | dont_care | null until answered),
+  answered (bool), report_id, updated_at. Starts EMPTY — no seeded defaults. A row is
+  created for EACH material finding when a report is produced, with answered=false;
+  answering a finding sets stance and flips answered=true. Same service re-reviewed →
+  its row updates in place and bumps agreement_version; a different service in the same
+  category → a new row (duplicates across services are expected). This single table is
+  what the user sees/edits (Preferences tab), what tracks whether a report is fully
+  answered (subsumes the old getSavedStances reconstruction), and what lets us
+  reconstruct any agreement and detect partially-answered ones.
+
+**How judgment uses memory.** The ToS;DR taxonomy is the always-on base layer: every
+judgment reasons from a case's severity/weight/description regardless of user history.
+User answers enrich it when present. When MaterialityJudge weighs a case for a category,
+it reads the taxonomy plus any `answers` rows for that (case × category) across services.
+No rows → reason from the taxonomy alone. Rows agree → use that stance. Rows conflict
+across services (one care, one dont_care) → the LLM decides whether to surface, using the
+rows as context, and may record the new service's answer. This replaces the former
+mechanical fallback (exact case-category → general → ToS;DR severity default).
+
+**Migration impact (answers table replaces preferences) — affected when built:**
+supabase/schema.sql (new `answers` table; retire `preferences`),
+scripts/seed_preferences.py (retired — no seeding), lib/db.ts (upsertPreferences +
+slice read → answer-log read/write), lib/orchestrator.ts (fetchPreferenceSlice),
+lib/modules/materialityJudge.ts (input shape + new LLM conflict step), the feedback
+write path (lib/feedback.ts, /api/feedback), computeStandingIssues, getSavedStances
+(subsumed), the Dashboard counts, and the Preferences tab. GRADE-SAFE: the eight module
+NAMES, the steps trace, the four endpoints, and the /api/execute envelope stay
+byte-identical; only internal data shapes change.
 
 ---
 
@@ -123,9 +152,12 @@ Ordered by how a person triages (act → be aware → review → inventory):
 4. **Subscribed services** — the distinct services in the version store (see §8).
 
 ### Tab 2 — Preferences
-The preference table, presented **grouped by the 26 ToS;DR topics** (Data Collection,
-Ownership, Account Termination, …) with cases nested under each — a flat 236-row table is
-unusable. Sensible defaults from ToS;DR severity; user overrides on top. Editable here.
+A readable, filterable view of the answer log — not a 236-case browser. One row per clause
+the user has actually been shown: Service · Category · Clause · Explanation · Your answer
+(care / don't care / unanswered). Grows as reports are answered, so the user only sees
+clauses they've encountered. Filterable (e.g. "Spotify · critical · care"). Editing here
+updates the row and feeds the same judgment logic. Deep-linkable with pre-applied filters
+(from Standing issues / Subscribed).
 
 ### Tab 3 — Log
 Full, filterable history: every agreement the agent read, when, and what it did
