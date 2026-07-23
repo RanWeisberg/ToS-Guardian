@@ -15,6 +15,9 @@ import type { ExecuteRequest, ExecuteResponse } from "@/lib/contracts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Allow the full pipeline the assignment's 5-min ceiling (and the Fluid-compute
+// Hobby max) instead of Vercel's low default, so a real multi-LLM run isn't killed.
+export const maxDuration = 300;
 
 export async function POST(request: Request): Promise<Response> {
   try {

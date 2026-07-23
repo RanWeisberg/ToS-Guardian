@@ -22,6 +22,10 @@ import { selectMailSource } from "@/lib/mail/selectSource";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// A cron check can drive several runAgent calls (up to MAX_PER_CHECK), each a
+// multi-LLM pipeline — give it the 5-min ceiling (Fluid-compute Hobby max) so it
+// isn't killed by Vercel's low default timeout.
+export const maxDuration = 300;
 
 async function handle(): Promise<Response> {
   try {
