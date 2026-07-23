@@ -496,3 +496,161 @@ export async function listCategories(): Promise<string[]> {
   }
   return [...set].sort((a, b) => a.localeCompare(b));
 }
+
+// ---------------------------------------------------------------------------
+// answers — the answer log (PROJECT_SPEC §5; see supabase/answers.sql).
+//
+// ADDITIVE (migration step 1): this lives ALONGSIDE the `preferences` table and
+// its helpers above. Nothing here reads or writes `preferences`. The answer log
+// is the growing, human-facing record of every material clause the user has been
+// shown and how they responded — one row per (service × case × category).
+// ---------------------------------------------------------------------------
+
+const ANSWERS_TABLE = "answers";
+
+/** A row of `answers`, mirroring supabase/answers.sql column-for-column. */
+export interface AnswerRow {
+  id: number;
+  service: string;
+  category: string;
+  case_id: string;
+  clause: string;
+  explanation: string;
+  agreement_version: number;
+  /** 'care' | 'dont_care', or null until the finding is answered. */
+  stance: "care" | "dont_care" | null;
+  answered: boolean;
+  report_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The fields needed to create/refresh one answer-log row. `stance`/`answered`
+ *  are never set here (defaults on insert, preserved on conflict); `id`,
+ *  `created_at`, `updated_at` are managed by the schema / upsertAnswerRows. */
+export interface NewAnswerRow {
+  service: string;
+  category: string;
+  case_id: string;
+  clause: string;
+  explanation: string;
+  agreement_version: number;
+  report_id: string;
+}
+
+/**
+ * Upsert answer-log rows on the (service, case_id, category) key. No-op on empty.
+ *
+ * The payload deliberately OMITS `stance` and `answered`, so:
+ *   - on INSERT the schema defaults apply (stance=NULL, answered=false); and
+ *   - on CONFLICT only the provided provenance columns (clause, explanation,
+ *     agreement_version, report_id, updated_at) are updated, leaving any prior
+ *     stance/answered intact — a re-review refreshes provenance, never wipes an
+ *     answer. Throws loudly on error (CLAUDE.md §7).
+ */
+export async function upsertAnswerRows(rows: NewAnswerRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const now = new Date().toISOString();
+  const payload = rows.map((r) => ({
+    service: r.service,
+    category: r.category,
+    case_id: r.case_id,
+    clause: r.clause,
+    explanation: r.explanation,
+    agreement_version: r.agreement_version,
+    report_id: r.report_id,
+    updated_at: now,
+  }));
+  const { error } = await supabase
+    .from(ANSWERS_TABLE)
+    .upsert(payload, { onConflict: "service,case_id,category" });
+  if (error) {
+    throw new Error(
+      `db.upsertAnswerRows: failed to upsert ${payload.length} answer row(s): ${error.message}`,
+    );
+  }
+}
+
+/** Record a user's answer: set stance + answered=true (+ updated_at) on the row
+ *  matching (report_id, case_id). Throws loudly on error (CLAUDE.md §7). */
+export async function setAnswer(
+  reportId: string,
+  caseId: string,
+  stance: "care" | "dont_care",
+): Promise<void> {
+  const { error } = await supabase
+    .from(ANSWERS_TABLE)
+    .update({ stance, answered: true, updated_at: new Date().toISOString() })
+    .eq("report_id", reportId)
+    .eq("case_id", caseId);
+  if (error) {
+    throw new Error(
+      `db.setAnswer: failed to set answer for report "${reportId}" case "${caseId}": ${error.message}`,
+    );
+  }
+}
+
+/** All answer-log rows for one report. [] when none. Throws loudly on error. */
+export async function getReportAnswerRows(reportId: string): Promise<AnswerRow[]> {
+  const { data, error } = await supabase
+    .from(ANSWERS_TABLE)
+    .select("*")
+    .eq("report_id", reportId);
+  if (error) {
+    throw new Error(
+      `db.getReportAnswerRows: failed to read answers for report "${reportId}": ${error.message}`,
+    );
+  }
+  return (data as AnswerRow[] | null) ?? [];
+}
+
+/** Every answer-log row (for the future Preferences view). [] when none. Throws
+ *  loudly on error (CLAUDE.md §7). */
+export async function listAllAnswers(): Promise<AnswerRow[]> {
+  const { data, error } = await supabase.from(ANSWERS_TABLE).select("*");
+  if (error) {
+    throw new Error(`db.listAllAnswers: failed to read answers: ${error.message}`);
+  }
+  return (data as AnswerRow[] | null) ?? [];
+}
+
+/**
+ * The judgment read path (§5): the ANSWERED stances (stance not null) for the
+ * given case_ids at `category`, ACROSS ALL services. This is what enriches the
+ * always-on ToS;DR taxonomy base when MaterialityJudge weighs a case; the LLM
+ * decides only when services conflict. [] on empty input. Throws loudly on error.
+ */
+export async function getAnswerContext(
+  caseIds: string[],
+  category: string,
+): Promise<{ service: string; case_id: string; stance: "care" | "dont_care" }[]> {
+  if (caseIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from(ANSWERS_TABLE)
+    .select("service, case_id, stance")
+    .eq("category", category)
+    .in("case_id", caseIds)
+    .not("stance", "is", null);
+  if (error) {
+    throw new Error(`db.getAnswerContext: failed to read answer context: ${error.message}`);
+  }
+  return (data ?? []) as {
+    service: string;
+    case_id: string;
+    stance: "care" | "dont_care";
+  }[];
+}
+
+/** The answered stances for ONE report, as { case_id -> stance } (rows with a
+ *  non-null stance only). Pre-fills the report screen. {} when none. Throws
+ *  loudly on error (CLAUDE.md §7). */
+export async function getReportStances(
+  reportId: string,
+): Promise<Record<string, "care" | "dont_care">> {
+  const rows = await getReportAnswerRows(reportId);
+  const map: Record<string, "care" | "dont_care"> = {};
+  for (const r of rows) {
+    if (r.stance !== null) map[r.case_id] = r.stance;
+  }
+  return map;
+}

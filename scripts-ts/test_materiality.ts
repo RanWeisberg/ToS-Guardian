@@ -1,15 +1,15 @@
 /**
  * scripts-ts/test_materiality.ts — standalone smoke test for Module 6 (MaterialityJudge).
  *
- * Because MaterialityJudge honors the frozen contract (it takes the preference slice as
- * INPUT and does no store I/O), this test plays the orchestrator's role: it fetches the
- * RELEVANT preference slice from the REAL seeded Supabase table (case_ids × category and
- * the general '*' default) and passes it in.
+ * MaterialityJudge honors the frozen contract: it takes the ANSWER CONTEXT as INPUT
+ * (the answered stances for the involved cases, across services, already filtered to
+ * the category — the orchestrator's job) and does no store I/O. This test plays the
+ * orchestrator's role by building that context in-code, so it needs no Supabase.
  *
- * Two scenarios:
- *   (1) a change on a bad / high-weight case the user cares about by default
- *       → expect hasMaterialFindings true and that item material.
- *   (2) a change on a benign case the user doesn't care about
+ * Two scenarios (each makes exactly ONE MaterialityJudge LLM call):
+ *   (1) a bad / high-weight case the user has answered "care" (on another service)
+ *       → answers_agree → expect hasMaterialFindings true and that item material.
+ *   (2) a benign case with NO answers → severity default "dont_care"
  *       → expect hasMaterialFindings false.
  *
  * Run with:  npx tsx --env-file=.env.local scripts-ts/test_materiality.ts
@@ -17,11 +17,12 @@
 
 import { runMaterialityJudge } from "@/lib/modules/materialityJudge";
 import { Tracer } from "@/lib/trace";
-import { supabase } from "@/lib/db";
-import type { Preference } from "@/lib/db";
 import type { DiffChange, MatchedCase, MaterialityMode } from "@/lib/contracts";
 
 const CATEGORY = "cloud storage";
+
+/** The minimal answer-context shape MaterialityJudgeInput carries. */
+type AnswerContext = { service: string; case_id: string; stance: "care" | "dont_care" }[];
 
 // Real ToS;DR cases (ids/severity/weight as seen from the CaseClassifier taxonomy).
 const BAD_HIGH = mc("166", "This service shares your personal data with third parties that are not essential to its operation", "bad", 70);
@@ -42,30 +43,19 @@ function addedChange(matched: MatchedCase, summary: string): DiffChange {
   };
 }
 
-/** Fetch the relevant preference slice from Supabase (orchestrator's job). */
-async function fetchSlice(caseIds: string[]): Promise<Preference[]> {
-  const { data, error } = await supabase
-    .from("preferences")
-    .select("*")
-    .in("case_id", caseIds)
-    .in("category", [CATEGORY, "*"]);
-  if (error) throw new Error(`Supabase preferences query failed: ${error.message}`);
-  return (data ?? []) as Preference[];
-}
-
 async function runScenario(
   label: string,
   mode: MaterialityMode,
   changes: DiffChange[],
-  slice: Preference[],
+  answerContext: AnswerContext,
 ) {
   console.log("\n=====================================================");
   console.log(`SCENARIO: ${label}`);
   console.log("=====================================================");
-  console.log("preference slice fetched:", JSON.stringify(slice));
+  console.log("answer context passed:", JSON.stringify(answerContext));
 
   const tracer = new Tracer();
-  const out = await runMaterialityJudge({ mode, category: CATEGORY, changes, preferenceSlice: slice }, tracer);
+  const out = await runMaterialityJudge({ mode, category: CATEGORY, changes, answerContext }, tracer);
 
   // Resolved stances are visible in the recorded step's user_prompt.
   if (tracer.steps.length > 0) {
@@ -85,20 +75,18 @@ async function runScenario(
 }
 
 async function main() {
-  const slice = await fetchSlice([BAD_HIGH.case_id, BENIGN.case_id]);
-
   await runScenario(
-    "(1) bad/high-weight case the user cares about → expect material",
+    "(1) bad/high case the user answered 'care' (another service) → expect material",
     "change",
     [addedChange(BAD_HIGH, "New case: the service now shares your personal data with non-essential third parties.")],
-    slice.filter((p) => p.case_id === BAD_HIGH.case_id),
+    [{ service: "Some Other Service", case_id: BAD_HIGH.case_id, stance: "care" }],
   );
 
   await runScenario(
-    "(2) benign case → expect NOT material",
+    "(2) benign case, no answers → severity default dont_care → expect NOT material",
     "change",
     [addedChange(BENIGN, "The service now gives a week's notice before changing its terms.")],
-    slice.filter((p) => p.case_id === BENIGN.case_id),
+    [],
   );
 }
 

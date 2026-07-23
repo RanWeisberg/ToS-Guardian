@@ -1,68 +1,55 @@
 /**
- * lib/feedback.ts — the report-feedback write path (Phase 7 Step D core).
+ * lib/feedback.ts — the report-feedback write path (migration step 3).
  *
  * `applyReportFeedback` records a user's per-point care/don't-care answers for one
- * report as user preferences, and flips the report to 'answered' once EVERY point
- * in it has been answered (by this submission or a prior one). Pure core — no HTTP
- * concerns; the route wraps it in the next chunk.
+ * report into the ANSWER LOG (`answers` table), and flips the report to 'answered'
+ * once every finding in it has been answered. Pure core — no HTTP concerns; the
+ * route (/api/feedback) wraps it.
  *
- * The category is always derived from the persisted report row, never trusted from
- * the client. Preference writes go exclusively through db.upsertPreferences (the
- * single source of truth), and no LLM is involved.
+ * As of step 3 this writes ONLY to `answers` (setAnswer per finding). It no longer
+ * touches the `preferences` table. Completion is derived from the report's answer
+ * rows (every row answered=true), which subsumes the old preference-based check.
+ * No LLM is involved.
  */
 
-import type { PreferenceUpdate } from "@/lib/contracts";
-import type { Preference } from "@/lib/db";
 import {
   getReportById,
-  upsertPreferences,
+  setAnswer,
+  getReportAnswerRows,
   setReportStatus,
-  getUserPreferenceCaseIds,
 } from "@/lib/db";
 
-/** A per-point feedback stance — the exact union the preference store writes. */
-export type FeedbackStance = Preference["stance"]; // "care" | "dont_care"
+/** A per-point feedback stance. */
+export type FeedbackStance = "care" | "dont_care";
 
 /**
  * Apply per-point feedback to a report.
  *
  * @param reportId  the persisted report to answer.
- * @param stances   case_id → stance for the points the user just answered.
+ * @param stances   case_id → stance for the findings the user just answered.
  * @returns whether the report is now fully answered.
  */
 export async function applyReportFeedback(
   reportId: string,
   stances: Record<string, FeedbackStance>,
 ): Promise<{ answered: boolean }> {
-  // a. Fetch the report; fail clearly if it doesn't exist.
+  // Fetch the report as the existence guard; fail clearly if it's missing.
+  // (The answer rows are keyed by (report_id, case_id), so category isn't needed
+  // for the write — it was set at report time.)
   const report = await getReportById(reportId);
   if (!report) {
     throw new Error(`applyReportFeedback: report "${reportId}" not found.`);
   }
 
-  // b. Category comes from the row — never trust the client for it.
-  const category = report.category;
-
-  // c. Persist the just-submitted answers as user preferences.
-  const submittedCaseIds = Object.keys(stances);
-  const updates: PreferenceUpdate[] = submittedCaseIds.map((case_id) => ({
-    case_id,
-    category,
-    stance: stances[case_id],
-  }));
-  await upsertPreferences(updates);
-
-  // d. Fully answered? The union of the just-submitted case_ids AND those that
-  //    already carry a source='user' preference at this (case_id, category) must
-  //    cover every point in the report.
-  const pointCaseIds = report.points.map((p) => p.case_id);
-  const answered = new Set<string>(submittedCaseIds);
-  for (const id of await getUserPreferenceCaseIds(pointCaseIds, category)) {
-    answered.add(id);
+  // Record each just-submitted answer on its answer-log row (stance + answered).
+  for (const [caseId, stance] of Object.entries(stances)) {
+    await setAnswer(reportId, caseId, stance);
   }
-  const fullyAnswered = pointCaseIds.every((id) => answered.has(id));
 
-  // e. Flip to 'answered' only when complete; otherwise leave it 'pending'.
+  // Fully answered ⇔ every one of the report's answer rows is answered.
+  const rows = await getReportAnswerRows(reportId);
+  const fullyAnswered = rows.length > 0 && rows.every((r) => r.answered);
+
   if (fullyAnswered) {
     await setReportStatus(reportId, "answered");
   }

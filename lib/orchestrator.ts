@@ -22,8 +22,8 @@
 
 import { Tracer } from "@/lib/trace";
 import type { Step } from "@/lib/trace";
-import { supabase } from "@/lib/db";
-import type { Preference, ClauseClassification } from "@/lib/db";
+import { supabase, getAnswerContext } from "@/lib/db";
+import type { ClauseClassification } from "@/lib/db";
 import type {
   ClauseCaseClassification,
   MaterialityMode,
@@ -41,10 +41,6 @@ import { runReportComposer } from "@/lib/modules/reportComposer";
 import { runStateWriter } from "@/lib/modules/stateWriter";
 
 const VERSIONS_TABLE = "agreement_versions";
-const PREFERENCES_TABLE = "preferences";
-
-/** The general (all-category) preference key (§5 fallback hierarchy). */
-const GENERAL_CATEGORY = "*";
 
 /** Fallbacks when IntakeRouter cannot name the service/category. These keep the
  *  downstream contracts (which require non-null strings) satisfiable without
@@ -64,6 +60,9 @@ export interface RunReport {
   points: ReportComposerOutput["points"];
   truncation_notice: string | null;
   response_line: string;
+  /** The agreement version this report was produced against (0 = baseline). The
+   *  route stamps it onto the answer-log rows it creates. */
+  version: number;
 }
 
 /** What runAgent returns: the human-readable response line, the ordered LLM
@@ -166,15 +165,16 @@ export async function runAgent(prompt: string): Promise<RunResult> {
   // --- 6. VersionDiffer: genuine changes (baseline: everything new). ------
   const diff = await runVersionDiffer({ current: classifications, prior }, tracer);
 
-  // --- 7. Preference slice + MaterialityJudge. ----------------------------
-  //  Slice = only the (case × category) rows that apply: the cases actually
-  //  involved in the diff, for THIS category plus the general '*' default.
-  //  Never the full 236-row table (CLAUDE.md §5).
+  // --- 7. Answer context + MaterialityJudge. ------------------------------
+  //  §5 model: the ToS;DR taxonomy is the always-on base layer; the user's prior
+  //  ANSWERS enrich it. Fetch only the answered stances for the involved cases at
+  //  THIS category, across all services — the judge resolves conflicts. Never the
+  //  whole answer log (CLAUDE.md §5).
   const involvedCaseIds = uniqueCaseIds(diff.changes);
-  const preferenceSlice = await fetchPreferenceSlice(involvedCaseIds, category);
+  const answerContext = await getAnswerContext(involvedCaseIds, category);
 
   const { material } = await runMaterialityJudge(
-    { mode, category, changes: diff.changes, preferenceSlice },
+    { mode, category, changes: diff.changes, answerContext },
     tracer,
   );
 
@@ -218,6 +218,7 @@ export async function runAgent(prompt: string): Promise<RunResult> {
         points: composed.points,
         truncation_notice: composed.truncation_notice,
         response_line: response,
+        version,
       };
 
   return { response, steps: tracer.steps, report };
@@ -250,29 +251,6 @@ async function getLatestVersion(
     version: data.version as number,
     classifications: (data.classifications ?? []) as unknown as ClauseCaseClassification[],
   };
-}
-
-/** Fetch ONLY the relevant preference rows: the involved cases, in this category
- *  plus the general '*' default. Empty case set ⇒ no query, empty slice. */
-async function fetchPreferenceSlice(
-  caseIds: string[],
-  category: string,
-): Promise<Preference[]> {
-  if (caseIds.length === 0) return [];
-
-  const categories =
-    category === GENERAL_CATEGORY ? [GENERAL_CATEGORY] : [category, GENERAL_CATEGORY];
-
-  const { data, error } = await supabase
-    .from(PREFERENCES_TABLE)
-    .select("*")
-    .in("case_id", caseIds)
-    .in("category", categories);
-
-  if (error) {
-    throw new Error(`Orchestrator: failed to fetch the preference slice: ${error.message}`);
-  }
-  return (data ?? []) as Preference[];
 }
 
 // ---------------------------------------------------------------------------

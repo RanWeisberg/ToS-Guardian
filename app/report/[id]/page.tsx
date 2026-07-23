@@ -12,7 +12,7 @@
  */
 
 import { notFound } from "next/navigation";
-import { getReportById, getSavedStances } from "@/lib/db";
+import { getReportById, getReportStances } from "@/lib/db";
 import type { MaterialFinding } from "@/lib/contracts";
 import ReportView from "./ReportView";
 
@@ -35,11 +35,8 @@ export default async function ReportByIdPage({
     change: p.change,
   }));
 
-  // Pre-fill any points the user already answered for this (case_id, category).
-  const savedStances = await getSavedStances(
-    report.points.map((p) => p.case_id),
-    report.category,
-  );
+  // Pre-fill any findings the user already answered on this report (answer log).
+  const savedStances = await getReportStances(report.id);
 
   return (
     <ReportView

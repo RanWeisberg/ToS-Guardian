@@ -5,16 +5,17 @@
  * ToS;DR case weights to decide what is worth surfacing (empty ⇒ ReportComposer stays
  * silent).
  *
- * DESIGN NOTE (flagged + confirmed): the task's STEP A described fetching the preference
- * slice from Supabase inside this module, but the frozen contract carries
- * `MaterialityJudgeInput.preferenceSlice` as an INPUT. Per the "honor the contract"
- * decision, this module stays PURE (input → output, no store I/O, like the other five
- * modules): it resolves each case's stance MECHANICALLY from the provided slice via the
- * §5 fallback hierarchy (exact (case_id, category) → general (case_id, '*') → ToS;DR
- * severity default). The Supabase fetch that produces the slice lives in the orchestrator.
+ * §5 MODEL: the ToS;DR taxonomy is the always-on BASE LAYER — every judgment reasons from a
+ * case's severity/weight regardless of user history. The user's prior ANSWERS enrich it.
+ * This module stays PURE (input → output, no store I/O, like the other five modules): the
+ * orchestrator fetches the answered stances (across services, for this category) and passes
+ * them as `answerContext`. Step A resolves each case MECHANICALLY via resolveFromAnswers:
+ * no answers → severity default; answers agree → that stance; answers conflict across
+ * services → provisional "care" plus the conflicting history, deferred to the judge.
  *
- * Step A (stance resolution) is mechanical — no LLM. Step B is exactly ONE LLM judgment
- * call. The preference resolution is NOT a trace Step.
+ * Step A is mechanical — no LLM. Step B is exactly ONE LLM judgment call (conflicts are
+ * reasoned over inside that same single call — never a second call). Stance resolution is
+ * NOT a trace Step.
  */
 
 import type {
@@ -25,15 +26,23 @@ import type {
   DiffChange,
   Classification,
 } from "@/lib/contracts";
-import type { Preference } from "@/lib/db";
 import { MODULES } from "@/lib/modules";
 import { chat } from "@/lib/llmod";
 import type { Tracer } from "@/lib/trace";
 
-/** The general (non-category-specific) preference key. */
-const GENERAL_CATEGORY = "*";
+type Stance = "care" | "dont_care";
 
-type Stance = Preference["stance"]; // "care" | "dont_care"
+/** One answered stance for a case on some service (already category-filtered). */
+type AnswerContextEntry = { service: string; case_id: string; stance: Stance };
+
+/** The resolution of a case's stance from the taxonomy base + any answers. */
+export interface ResolvedAnswer {
+  stance: Stance;
+  source: "answers_agree" | "answers_conflict" | "severity_default";
+  /** For source==="answers_conflict": the differing per-service stances the judge
+   *  reasons over. Empty for the other sources. */
+  conflicts: { service: string; stance: Stance }[];
+}
 
 /** One change annotated with the metadata the judgment call reasons over. */
 interface AnnotatedItem {
@@ -44,14 +53,16 @@ interface AnnotatedItem {
   weight: number;
   title: string;
   stance: Stance;
-  stanceSource: "exact" | "general" | "severity_default";
+  stanceSource: ResolvedAnswer["source"];
+  /** Conflicting per-service history when stanceSource==="answers_conflict". */
+  conflicts: { service: string; stance: Stance }[];
 }
 
 export async function runMaterialityJudge(
   input: MaterialityJudgeInput,
   tracer: Tracer,
 ): Promise<MaterialityJudgeOutput> {
-  const { mode, category, changes, preferenceSlice } = input;
+  const { mode, category, changes, answerContext } = input;
 
   // --- STEP A (mechanical): annotate each judgeable change with severity + resolved
   //     stance. "unchanged" carry-overs are not changes to report, and changes without a
@@ -61,11 +72,11 @@ export async function runMaterialityJudge(
     if (change.type === "unchanged") return;
     const matched = matchedCaseFor(change);
     if (!matched || !change.case_id) return;
-    const { stance, source } = resolveStance(
+    const { stance, source, conflicts } = resolveFromAnswers(
       change.case_id,
       category,
       matched.classification,
-      preferenceSlice,
+      answerContext,
     );
     items.push({
       itemId: `i${i}`,
@@ -76,6 +87,7 @@ export async function runMaterialityJudge(
       title: matched.title,
       stance,
       stanceSource: source,
+      conflicts,
     });
   });
 
@@ -123,23 +135,43 @@ function matchedCaseFor(change: DiffChange): MatchedCase | null {
   return source.cases.find((c) => c.case_id === change.case_id) ?? null;
 }
 
-/** §5 fallback hierarchy: exact (case_id, category) → general (case_id, '*') →
- *  ToS;DR severity default (care iff bad/blocker). Purely mechanical over the slice. */
-function resolveStance(
+/**
+ * §5 resolution — PURE, no I/O. The ToS;DR severity is the always-on base; the
+ * user's answered stances for this case (across services, already category-filtered
+ * by the orchestrator) enrich it:
+ *   - no answers            → severity default (care iff bad/blocker);
+ *   - all present stances equal → that stance (source "answers_agree");
+ *   - stances conflict       → provisional "care" (surface-by-default) + the
+ *                              conflicting per-service history for Step B (source
+ *                              "answers_conflict").
+ * `category` is part of the signature for clarity; answerContext is already scoped
+ * to it, so resolution filters by case_id only.
+ */
+export function resolveFromAnswers(
   caseId: string,
   category: string,
   classification: Classification,
-  slice: Preference[],
-): { stance: Stance; source: AnnotatedItem["stanceSource"] } {
-  const exact = slice.find((p) => p.case_id === caseId && p.category === category);
-  if (exact) return { stance: exact.stance, source: "exact" };
+  answerContext: AnswerContextEntry[],
+): ResolvedAnswer {
+  void category; // answerContext is pre-filtered to this category by the caller.
 
-  const general = slice.find((p) => p.case_id === caseId && p.category === GENERAL_CATEGORY);
-  if (general) return { stance: general.stance, source: "general" };
+  const mine = answerContext.filter((a) => a.case_id === caseId);
+  if (mine.length === 0) {
+    const stance: Stance =
+      classification === "bad" || classification === "blocker" ? "care" : "dont_care";
+    return { stance, source: "severity_default", conflicts: [] };
+  }
 
-  const severityStance: Stance =
-    classification === "bad" || classification === "blocker" ? "care" : "dont_care";
-  return { stance: severityStance, source: "severity_default" };
+  const distinct = new Set(mine.map((m) => m.stance));
+  if (distinct.size === 1) {
+    return { stance: mine[0].stance, source: "answers_agree", conflicts: [] };
+  }
+
+  return {
+    stance: "care",
+    source: "answers_conflict",
+    conflicts: mine.map((m) => ({ service: m.service, stance: m.stance })),
+  };
 }
 
 const SYSTEM_PROMPT = `You are the MaterialityJudge for ToS Guardian. You decide which agreement changes/findings are MATERIAL enough to surface to THIS specific user, given what they care about.
@@ -154,6 +186,7 @@ Decide materiality per item using this guidance:
 - A "blocker" the user cares about is essentially always material.
 - Items the user marked "dont_care", or that are benign (good/neutral) and low impact, are NOT material.
 - The user's stance dominates: do not surface something they explicitly don't care about, and do not suppress something bad/blocker they do care about.
+- CONFLICTING HISTORY: some items note the user's prior answers for this SAME case on OTHER services, which disagree (cared on one, not on another). For those, the shown stance is PROVISIONAL (surface-by-default); decide materiality for THIS service by reasoning over that history and the severity/weight — lean toward surfacing when the prior "care" reflects a comparable service.
 
 Return STRICT JSON ONLY — no prose, no explanation, no markdown code fences. An object with exactly:
   - "hasMaterialFindings": boolean — true if ANY item is material.
@@ -173,13 +206,23 @@ function buildJudgePrompt(
       ? "Mode: onboarding — these are the findings from an agreement the user is signing up to."
       : "Mode: change — these are genuine changes detected against the version the user previously accepted.";
 
-  const blocks = items.map((it) =>
-    [
+  const blocks = items.map((it) => {
+    const conflicted = it.stanceSource === "answers_conflict";
+    const lines = [
       `item ${it.itemId} | change: ${it.change.type} | case ${it.case_id} "${it.title}"`,
-      `  severity: ${it.classification} | weight: ${it.weight} | your stance: ${it.stance}`,
+      `  severity: ${it.classification} | weight: ${it.weight} | your stance: ${it.stance}${
+        conflicted ? " (provisional — conflicting history below)" : ""
+      }`,
       `  what changed: ${it.change.summary}`,
-    ].join("\n"),
-  );
+    ];
+    if (conflicted) {
+      const history = it.conflicts.map((c) => `${c.service}=${c.stance}`).join(", ");
+      lines.push(
+        `  your prior answers for this case on other services: ${history} — decide materiality for THIS service using this history.`,
+      );
+    }
+    return lines.join("\n");
+  });
 
   return [modeLine, `Service category: ${category}`, "", blocks.join("\n\n")].join("\n");
 }

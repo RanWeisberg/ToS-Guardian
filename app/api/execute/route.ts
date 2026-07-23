@@ -10,7 +10,7 @@
  */
 
 import { runAgent } from "@/lib/orchestrator";
-import { insertReport } from "@/lib/db";
+import { insertReport, upsertAnswerRows } from "@/lib/db";
 import type { ExecuteRequest, ExecuteResponse } from "@/lib/contracts";
 
 export const runtime = "nodejs";
@@ -40,6 +40,21 @@ export async function POST(request: Request): Promise<Response> {
     let reportId: string | null = null;
     if (report) {
       reportId = await insertReport({ ...report, source: "manual" });
+      // Answer-log bookkeeping (migration step 3): one row per finding,
+      // answered=false, stamped with this run's agreement version. Upsert
+      // semantics mean a re-review of the same service updates rows in place and
+      // preserves prior answers. This is persistence, NOT part of the trace.
+      await upsertAnswerRows(
+        report.points.map((p) => ({
+          service: report.service,
+          category: report.category,
+          case_id: p.case_id,
+          clause: p.case_title,
+          explanation: p.why_it_matters,
+          agreement_version: report.version,
+          report_id: reportId as string,
+        })),
+      );
     }
 
     const ok: ExecuteResponse = {

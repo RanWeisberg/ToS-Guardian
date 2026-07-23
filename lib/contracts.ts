@@ -152,7 +152,7 @@ export interface VersionDifferOutput {
 }
 
 // ---------------------------------------------------------------------------
-// 6. MaterialityJudge — weigh findings against the user's preference slice
+// 6. MaterialityJudge — weigh findings against the user's answer context
 // ---------------------------------------------------------------------------
 
 /** Onboarding weighs all findings; change-notices weigh only the diff. */
@@ -164,9 +164,11 @@ export interface MaterialityJudgeInput {
   /** On "change" these are diff changes; on "onboarding" the full classification
    *  set is judged as findings. Kept as diff changes for a uniform shape. */
   changes: DiffChange[];
-  /** ONLY the relevant (case × category) rows — never the full 236-row table
-   *  (CLAUDE.md §5). */
-  preferenceSlice: Preference[];
+  /** Answered stances for the involved cases, ACROSS ALL services, already
+   *  filtered to this category by the orchestrator (§5: user answers enrich the
+   *  always-on ToS;DR taxonomy base; the LLM decides only on conflict). A minimal
+   *  local shape — deliberately not the db `AnswerRow` type, to keep layering. */
+  answerContext: { service: string; case_id: string; stance: "care" | "dont_care" }[];
 }
 
 export interface MaterialFinding {
