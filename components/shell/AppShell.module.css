@@ -126,6 +126,19 @@
   white-space: nowrap;
 }
 
+/* Middle "found new mail → analyzing" state — a soft teal pill by the button. */
+.processingPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border-radius: 100px;
+  background: #eaf6f4;
+  color: #0c8578;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* ---- New-reports banner (soft teal, spans the app) ------------------ */
 
 .bannerWrap {

@@ -4,13 +4,18 @@
  * components/shell/AppShell.tsx — the shared app chrome.
  *
  * Renders the top bar (ToS Guardian wordmark, a "Check mail" button + "Ready"
- * pill) and the four-/five-tab nav band, then the page content below it. The tabs
- * are real links; the active tab is derived from the current route (usePathname).
+ * pill) and the five-tab nav band, then the page content below it. The tabs are
+ * real links; the active tab is derived from the current route (usePathname).
  *
- * The ONLY network call here is the on-demand mail check: the "Check mail" button
- * POSTs /api/mail_check (mail-checking is button-only — there is no cron). When a
- * check produces reports, a soft banner spans the app with a link to the Dashboard;
- * router.refresh() re-renders the current page so any new reports appear.
+ * "Check mail" is TWO-PHASE (mail-checking is button-only — there is no cron):
+ *   phase 1 "peeking"    → POST /api/mail_peek: a FREE read (how many new emails?),
+ *                          no agent, zero tokens, marks nothing.
+ *   phase 2 "processing" → only when the peek found mail: POST /api/mail_check,
+ *                          which runs the agent and persists reports.
+ * The middle "Found N new agreements — analyzing…" state gives the user a genuine
+ * signal instead of one long grey button. On success a soft banner spans the app
+ * and router.refresh() re-renders the current page so new reports appear.
+ * These two mail calls are the ONLY network calls here; AppShell is otherwise chrome.
  */
 
 import { useEffect, useState } from "react";
@@ -26,7 +31,17 @@ const TABS = [
   { href: "/add-agreement", label: "Add agreement" },
 ] as const;
 
-/** The subset of the /api/mail_check response the button reads. */
+/** The header button's flow: idle → peeking (free) → processing (agent) → idle. */
+type Phase = "idle" | "peeking" | "processing";
+
+/** The subset of /api/mail_peek the button reads (phase 1). */
+interface MailPeekResponse {
+  status: "ok" | "error";
+  error: string | null;
+  count: number;
+}
+
+/** The subset of /api/mail_check the button reads (phase 2). */
 interface MailCheckResponse {
   status: "ok" | "error";
   error: string | null;
@@ -38,7 +53,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [checking, setChecking] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [foundCount, setFoundCount] = useState<number | null>(null);
   const [banner, setBanner] = useState<{ count: number } | null>(null);
   const [noNew, setNoNew] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,29 +67,59 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [noNew]);
 
   async function checkMail() {
-    setChecking(true);
     setError(null);
     setNoNew(false);
+    setPhase("peeking");
     try {
-      const res = await fetch("/api/mail_check", { method: "POST" });
-      const data = (await res.json()) as MailCheckResponse;
-      if (data.status === "ok") {
-        if (data.processed > 0) {
-          setBanner({ count: data.processed });
-        } else {
-          setNoNew(true);
+      // --- Phase 1: FREE peek — how many new emails? No agent, no tokens. ---
+      let peekCount = 0;
+      try {
+        const res = await fetch("/api/mail_peek", { method: "POST" });
+        const data = (await res.json()) as MailPeekResponse;
+        if (data.status !== "ok") {
+          setError("Couldn't check mail — try again");
+          return;
         }
-        // Reflect any newly-produced reports on the current page (e.g. Dashboard).
-        router.refresh();
-      } else {
+        peekCount = data.count;
+      } catch {
         setError("Couldn't check mail — try again");
+        return;
       }
-    } catch {
-      setError("Couldn't check mail — try again");
+
+      // Empty inbox → done, zero tokens spent.
+      if (peekCount === 0) {
+        setNoNew(true);
+        return;
+      }
+
+      // --- Phase 2: found new mail → run the agent (this spends tokens). ---
+      setFoundCount(peekCount);
+      setPhase("processing");
+      try {
+        const res = await fetch("/api/mail_check", { method: "POST" });
+        const data = (await res.json()) as MailCheckResponse;
+        if (data.status === "ok") {
+          // Use the ACTUAL processed count (may differ from the peek if mail
+          // arrived between phases, or if some runs were silent).
+          if (data.processed > 0) setBanner({ count: data.processed });
+          else setNoNew(true);
+          router.refresh();
+        } else {
+          setError("Couldn't finish processing — try again");
+        }
+      } catch {
+        setError("Couldn't finish processing — try again");
+      }
     } finally {
-      setChecking(false);
+      // Never leave the button stuck.
+      setPhase("idle");
+      setFoundCount(null);
     }
   }
+
+  const busy = phase !== "idle";
+  const buttonLabel =
+    phase === "peeking" ? "Checking…" : phase === "processing" ? "Analyzing…" : "Check mail";
 
   return (
     <>
@@ -87,15 +133,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className={styles.actions}>
+            {phase === "processing" && foundCount !== null && (
+              <span className={styles.processingPill}>
+                Found {foundCount} new agreement{foundCount === 1 ? "" : "s"} — analyzing…
+              </span>
+            )}
             {noNew && <span className={styles.microNote}>No new mail</span>}
             {error && <span className={styles.errorNote}>{error}</span>}
             <button
               type="button"
               className={styles.checkBtn}
               onClick={checkMail}
-              disabled={checking}
+              disabled={busy}
             >
-              {checking ? "Checking…" : "Check mail"}
+              {buttonLabel}
             </button>
             <div className={styles.status}>
               <span className={styles.statusDot} />
