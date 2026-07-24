@@ -209,14 +209,6 @@ export interface ActiveService {
   lastReviewedAt: string;
 }
 
-/** One agreement-version event, for the recent-activity feed. */
-export interface RecentActivity {
-  service: string;
-  category: string;
-  version: number;
-  at: string;
-}
-
 /** A problematic case the user cares about, still carried by a service's terms. */
 export interface StandingIssue {
   case_id: string;
@@ -293,30 +285,6 @@ export async function listActiveServices(): Promise<ActiveService[]> {
   return [...byService.values()].sort((a, b) =>
     b.lastReviewedAt.localeCompare(a.lastReviewedAt),
   );
-}
-
-/** The most recent agreement-version events (any version), newest first, capped.
- *  [] when there's no activity. Throws loudly on error (CLAUDE.md §7). */
-export async function listRecentActivity(limit = 6): Promise<RecentActivity[]> {
-  const { data, error } = await supabase
-    .from(VERSIONS_TABLE)
-    .select("service, category, version, created_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) {
-    throw new Error(`db.listRecentActivity: failed to read activity: ${error.message}`);
-  }
-  return ((data ?? []) as {
-    service: string;
-    category: string;
-    version: number;
-    created_at: string;
-  }[]).map((r) => ({
-    service: r.service,
-    category: r.category,
-    version: r.version,
-    at: r.created_at,
-  }));
 }
 
 /** One entry in the Activity Log: an agreement the agent reviewed and what it did. */
@@ -518,20 +486,6 @@ export async function listServicesWithIssueCounts(): Promise<ServiceWithIssues[]
   return services.map((s) => ({ ...s, issueCount: countByService.get(s.service) ?? 0 }));
 }
 
-/** Distinct real service categories (from the version store), sorted. [] when
- *  none. Throws loudly on error (CLAUDE.md §7). These are the categories the
- *  Preferences tab lets the user tune stances for. */
-export async function listCategories(): Promise<string[]> {
-  const { data, error } = await supabase.from(VERSIONS_TABLE).select("category");
-  if (error) {
-    throw new Error(`db.listCategories: failed to read categories: ${error.message}`);
-  }
-  const set = new Set<string>();
-  for (const row of (data ?? []) as { category: string }[]) {
-    if (row.category) set.add(row.category);
-  }
-  return [...set].sort((a, b) => a.localeCompare(b));
-}
 
 // ---------------------------------------------------------------------------
 // answers — the answer log (PROJECT_SPEC §5; see supabase/answers.sql).
@@ -640,15 +594,6 @@ export async function getReportAnswerRows(reportId: string): Promise<AnswerRow[]
   return (data as AnswerRow[] | null) ?? [];
 }
 
-/** Every answer-log row (for the future Preferences view). [] when none. Throws
- *  loudly on error (CLAUDE.md §7). */
-export async function listAllAnswers(): Promise<AnswerRow[]> {
-  const { data, error } = await supabase.from(ANSWERS_TABLE).select("*");
-  if (error) {
-    throw new Error(`db.listAllAnswers: failed to read answers: ${error.message}`);
-  }
-  return (data as AnswerRow[] | null) ?? [];
-}
 
 /**
  * The judgment read path (§5): the ANSWERED stances (stance not null) for the
