@@ -5,13 +5,14 @@
  * email arrives, and a thin trigger drives the SAME core the API uses. It does
  * NOT duplicate any pipeline logic — it frames each email as a prompt and calls
  * runAgent(prompt) from lib/orchestrator.ts. Persisting versions/classifications
- * already happens inside runAgent/StateWriter; this layer only drives it, records
- * the outcome, and marks the email processed.
+ * already happens inside runAgent/StateWriter; on top of that this layer persists
+ * the produced report + answer rows EXACTLY like the manual /api/execute path,
+ * only tagged source='mail' (so mail-processed emails become visible reports).
  *
  * The mail layer is INFRASTRUCTURE (CLAUDE.md §7): it records NOTHING in the LLM
  * `steps` trace. The trace lives inside runAgent's return value, which the mail
- * layer deliberately discards (the monitoring path surfaces reports elsewhere,
- * not the raw trace).
+ * layer deliberately discards — it surfaces reports via the report/answer stores,
+ * not the raw trace.
  *
  * Budget guards (CLAUDE.md §5): at most MAX_PER_CHECK notices are processed per
  * check, and an empty inbox short-circuits with ZERO LLM calls. An email is
@@ -23,6 +24,7 @@
  */
 
 import { runAgent } from "@/lib/orchestrator";
+import { insertReport, upsertAnswerRows } from "@/lib/db";
 import type { ChangeNoticeEmail, MailSource } from "@/lib/mail/source";
 
 /** Hard cap on how many notices one check will process (runaway-cost guard). */
@@ -33,6 +35,12 @@ export interface MailCheckResult {
   id: string;
   status: "processed" | "error";
   note: string;
+  /** The persisted report id when the run produced one; null on a silent run
+   *  (nothing material) or on error. */
+  reportId: string | null;
+  /** True when a report was produced (something material); false for a silent
+   *  run or an error. */
+  material: boolean;
 }
 
 export interface MailCheckSummary {
@@ -89,14 +97,47 @@ export async function runMailCheck(source: MailSource): Promise<MailCheckSummary
   // the 5-minute ceiling with a small, capped batch (CLAUDE.md §2/§5).
   for (const email of batch) {
     try {
-      const { response } = await runAgent(buildPrompt(email));
-      // Mark processed ONLY after a successful run → idempotent; failures retry.
+      const { response, report } = await runAgent(buildPrompt(email));
+
+      // Persist EXACTLY like the manual /api/execute path, but tagged source='mail'.
+      // A silent run (report === null, nothing material) persists nothing. Done
+      // BEFORE markProcessed so a persistence failure retries the email next check.
+      let reportId: string | null = null;
+      if (report) {
+        reportId = await insertReport({ ...report, source: "mail" });
+        await upsertAnswerRows(
+          report.points.map((p) => ({
+            service: report.service,
+            category: report.category,
+            case_id: p.case_id,
+            clause: p.case_title,
+            explanation: p.why_it_matters,
+            agreement_version: report.version,
+            report_id: reportId as string,
+          })),
+        );
+      }
+
+      // Mark processed ONLY after a successful run AND its persistence → idempotent;
+      // a failure in either step leaves the email unprocessed for the next check.
       await source.markProcessed(email.id);
       processed += 1;
-      results.push({ id: email.id, status: "processed", note: summarize(response) });
+      results.push({
+        id: email.id,
+        status: "processed",
+        note: summarize(response),
+        reportId,
+        material: report !== null,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      results.push({ id: email.id, status: "error", note: message });
+      results.push({
+        id: email.id,
+        status: "error",
+        note: message,
+        reportId: null,
+        material: false,
+      });
     }
   }
 

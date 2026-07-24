@@ -77,6 +77,112 @@
   color: #57564f;
 }
 
+/* ---- Header actions (Check mail button + status pill) --------------- */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkBtn {
+  border: none;
+  background: #0f9e8f;
+  color: #fff;
+  border-radius: 100px;
+  padding: 9px 18px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(15, 158, 143, 0.28);
+  transition: background 0.15s, transform 0.15s;
+  white-space: nowrap;
+}
+
+.checkBtn:hover:not(:disabled) {
+  background: #0c8578;
+  transform: translateY(-1px);
+}
+
+.checkBtn:disabled {
+  background: #cfe9e4;
+  color: #fff;
+  box-shadow: none;
+  cursor: default;
+}
+
+.microNote {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a897f;
+  white-space: nowrap;
+}
+
+.errorNote {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c0492f;
+  white-space: nowrap;
+}
+
+/* ---- New-reports banner (soft teal, spans the app) ------------------ */
+
+.bannerWrap {
+  padding: 16px 40px 0;
+}
+
+.banner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: #eaf6f4;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(15, 158, 143, 0.12);
+}
+
+.bannerText {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0c8578;
+}
+
+.bannerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.bannerLink {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #0c8578;
+  white-space: nowrap;
+}
+
+.bannerLink:hover {
+  color: #0a6f64;
+}
+
+.bannerDismiss {
+  border: none;
+  background: transparent;
+  color: #0c8578;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.bannerDismiss:hover {
+  color: #0a6f64;
+}
+
 /* ---- Nav tabs (own horizontal band) --------------------------------- */
 
 .tabs {

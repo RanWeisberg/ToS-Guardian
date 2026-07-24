@@ -3,15 +3,17 @@
  *
  * Runs against REAL Supabase (.env.local) and the REAL core (runAgent → LLM), so
  * it consumes a little budget. It uses a throwaway ZZZ_-prefixed service so
- * nothing real is touched, and CLEANS UP everything it created (mock_inbox rows
- * AND any agreement_versions runAgent persisted for the throwaway service).
+ * nothing real is touched, and CLEANS UP everything it created (mock_inbox rows,
+ * agreement_versions, AND the reports + answer rows the mail path now persists).
  *
  *   (1) insert 2 mock change-notice rows into mock_inbox.
  *   (2) runMailCheck(mockSource) → expect checked=2, processed=2, each fed
- *       through runAgent (a non-empty "processed" note).
+ *       through runAgent (a non-empty "processed" note); AND assert the mail path
+ *       persisted a report (source='mail') + answer rows for the service.
  *   (3) RE-RUN runMailCheck(mockSource) → expect checked=0, processed=0
  *       (dedup / idempotency — the rows are now processed=true).
- *   (4) cleanup → delete all ZZZ_ mock_inbox rows + ZZZ_ agreement_versions.
+ *   (4) cleanup → delete all ZZZ_ mock_inbox rows + ZZZ_ agreement_versions +
+ *       ZZZ_ reports + ZZZ_ answers.
  *
  * Run with:  npx tsx --env-file=.env.local scripts-ts/test_mailcheck.ts
  */
@@ -50,6 +52,8 @@ const ROWS = [
 async function cleanup() {
   await supabase.from("mock_inbox").delete().like("id", "ZZZ_%");
   await supabase.from("agreement_versions").delete().eq("service", SERVICE);
+  await supabase.from("reports").delete().eq("service", SERVICE);
+  await supabase.from("answers").delete().eq("service", SERVICE);
 }
 
 async function main() {
@@ -96,6 +100,28 @@ async function main() {
       throw new Error("Expected runAgent to persist at least one agreement version.");
     }
 
+    // Confirm the mail path PERSISTED a report (source='mail') + answer rows — proof
+    // mail-processed emails now produce visible reports, not nothing.
+    const { count: reportCount } = await supabase
+      .from("reports")
+      .select("id", { count: "exact", head: true })
+      .eq("service", SERVICE)
+      .eq("source", "mail");
+    console.log(`reports for ${SERVICE} (source='mail'): ${reportCount} (expect >= 1)`);
+    if (!reportCount || reportCount < 1) {
+      throw new Error(
+        "Expected the mail path to persist at least one report with source='mail'.",
+      );
+    }
+    const { count: answerCount } = await supabase
+      .from("answers")
+      .select("id", { count: "exact", head: true })
+      .eq("service", SERVICE);
+    console.log(`answers for ${SERVICE}: ${answerCount} (expect >= 1)`);
+    if (!answerCount || answerCount < 1) {
+      throw new Error("Expected the mail path to create at least one answer row.");
+    }
+
     // (3) second check — dedup: nothing new to process.
     console.log("\n--- (3) runMailCheck (second pass — idempotency) ---");
     const second = await runMailCheck(mockSource);
@@ -118,8 +144,16 @@ async function main() {
       .from("agreement_versions")
       .select("id", { count: "exact", head: true })
       .eq("service", SERVICE);
+    const { count: leftoverReports } = await supabase
+      .from("reports")
+      .select("id", { count: "exact", head: true })
+      .eq("service", SERVICE);
+    const { count: leftoverAnswers } = await supabase
+      .from("answers")
+      .select("id", { count: "exact", head: true })
+      .eq("service", SERVICE);
     console.log(
-      `\n--- (4) cleanup done — leftover mock_inbox: ${leftoverInbox}, leftover versions: ${leftoverVersions} (expect 0, 0) ---`,
+      `\n--- (4) cleanup done — leftover mock_inbox: ${leftoverInbox}, versions: ${leftoverVersions}, reports: ${leftoverReports}, answers: ${leftoverAnswers} (expect 0, 0, 0, 0) ---`,
     );
   }
 }
