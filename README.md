@@ -1,4 +1,4 @@
-# ToS Guardian
+# ToS Guardian 
 
 **ToS Guardian** is an autonomous agent that reads the fine print so you don't have to.
 You tell it which service you're signing up for and paste the agreement; it reads the
