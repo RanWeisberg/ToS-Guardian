@@ -15,6 +15,17 @@
  * Exactly ONE Step is recorded — the STEP C judgment call. Embedding and Pinecone
  * retrieval are not LLM calls and are not part of the trace (CLAUDE.md §4/§7).
  *
+ * RECONCILIATION (why there is no array-length check): on a full-length real
+ * agreement the batched judgment covers 150+ clauses, and long JSON arrays reliably
+ * drift — the model duplicates an id, invents one, or drops one. Matching results to
+ * clauses BY POSITION/LENGTH turns that routine drift into a fatal error that throws
+ * away an already-paid-for embedding pass and a large completion. So results are
+ * reconciled BY clause_id instead (see reconcileClassifications): unknown ids are
+ * dropped, duplicates keep the first occurrence, and a clause the model never
+ * answered for is emitted with an empty `cases` array — "no known cases matched",
+ * which is a legitimate outcome, not an error. Only a completely unusable response
+ * (zero surviving entries) still throws. This adds NO extra LLM call and NO retry.
+ *
  * Contract: implements the frozen CaseClassifierInput → CaseClassifierOutput shape.
  */
 
@@ -24,6 +35,7 @@ import type {
   ClauseCaseClassification,
   MatchedCase,
   Classification,
+  Clause,
 } from "@/lib/contracts";
 import type { CaseMatch } from "@/lib/pinecone";
 import { MODULES } from "@/lib/modules";
@@ -90,42 +102,16 @@ export async function runCaseClassifier(
   const user_prompt = buildJudgePrompt(clauses, candidatesPerClause, category);
 
   const raw = await chat({ system_prompt, user_prompt });
-  const selections = parseSelections(raw, clauses.length);
 
-  // Reconstruct the contract shape from AUTHORITATIVE candidate metadata; the model
-  // only supplies which case_id + a confidence. This guarantees no invented cases and
-  // keeps title/classification/weight/topic faithful to the taxonomy.
-  const byClauseId = new Map(selections.map((s) => [s.clause_id, s]));
-  const classifications: ClauseCaseClassification[] = clauses.map((clause, i) => {
-    const sel = byClauseId.get(clause.id);
-    const map = candidateMaps[i];
-    const cases: MatchedCase[] = [];
-
-    if (sel) {
-      for (const chosen of sel.cases) {
-        const cand = map.get(chosen.case_id);
-        if (!cand) {
-          // Not among this clause's Pinecone candidates → skip it. This upholds the
-          // "never invent a case_id" guarantee (a skipped entry is dropped, never
-          // fabricated) without aborting the whole run over one bad entry.
-          console.warn(
-            `CaseClassifier: clause "${clause.id}" — skipping case_id "${chosen.case_id}", not among its candidates ${JSON.stringify([...map.keys()])} (no invented cases).`,
-          );
-          continue;
-        }
-        cases.push({
-          case_id: cand.case_id,
-          title: cand.title,
-          classification: toClassification(cand.classification, cand.case_id),
-          weight: cand.weight,
-          topic: cand.topic,
-          confidence: chosen.confidence,
-        });
-      }
-    }
-
-    return { clause_id: clause.id, clause_text: clause.text, cases };
-  });
+  // Reconcile BY clause_id (never by array length), then reconstruct the contract
+  // shape from AUTHORITATIVE candidate metadata; the model only supplies which
+  // case_id + a confidence. This guarantees no invented cases and keeps
+  // title/classification/weight/topic faithful to the taxonomy.
+  const classifications = reconcileClassifications(
+    clauses,
+    parseJsonPayload(raw),
+    candidateMaps,
+  );
 
   tracer.add({
     module: MODULES.CaseClassifier,
@@ -179,77 +165,193 @@ function stripFences(raw: string): string {
   return (m ? m[1] : trimmed).trim();
 }
 
-/** Parse + validate the batched judgment into per-clause selections. Throws loudly on
- *  malformed data (no silent fallback — CLAUDE.md §7). */
-function parseSelections(raw: string, expectedCount: number): Selection[] {
-  let parsed: unknown;
+/** Parse the raw completion into JSON. Invalid JSON is still fatal — there is nothing
+ *  to reconcile if the payload is not JSON at all. */
+function parseJsonPayload(raw: string): unknown {
   try {
-    parsed = JSON.parse(stripFences(raw));
+    return JSON.parse(stripFences(raw));
   } catch {
     throw new Error(`CaseClassifier: model did not return valid JSON. Got: ${raw.slice(0, 500)}`);
   }
-  if (!Array.isArray(parsed)) {
-    throw new Error(`CaseClassifier: expected a JSON array, got: ${raw.slice(0, 500)}`);
-  }
-  if (parsed.length !== expectedCount) {
+}
+
+/**
+ * Reconcile the model's batched judgment against the clauses that were SENT — by
+ * clause_id, NEVER by array length or position. PURE and exported so it can be
+ * exercised with fabricated data and no network call (scripts-ts/smoke_reconcile.ts).
+ *
+ *   1. Unknown clause_id (hallucinated / malformed extra) → dropped.
+ *   2. Duplicate clause_id → first occurrence wins, the rest ignored.
+ *   3. Sent clause with no returned entry → emitted with `cases: []`, i.e. "no known
+ *      cases matched". That is a legitimate result, not an error.
+ *   4. Output stays aligned with `sentClauses`, in the SAME ORDER they were sent.
+ *   5. Only a catastrophic response — ZERO usable entries — throws.
+ *
+ * `candidateMaps` carries the AUTHORITATIVE per-clause Pinecone metadata, positionally
+ * aligned with `sentClauses`; a chosen case_id absent from its clause's map is skipped,
+ * which is what upholds the "never invent a case_id" guarantee. It defaults to empty so
+ * the id-reconciliation logic can be tested standalone; omitting it yields empty `cases`
+ * for every clause, so production callers must always pass it.
+ */
+export function reconcileClassifications(
+  sentClauses: Clause[],
+  rawResults: unknown,
+  candidateMaps: ReadonlyArray<ReadonlyMap<string, CaseMatch>> = [],
+): ClauseCaseClassification[] {
+  if (sentClauses.length === 0) return [];
+
+  if (!Array.isArray(rawResults)) {
     throw new Error(
-      `CaseClassifier: model returned ${parsed.length} clause results but ${expectedCount} clauses were sent.`,
+      `CaseClassifier: expected a JSON array of clause results, got ${
+        rawResults === null ? "null" : typeof rawResults
+      }.`,
     );
   }
 
-  return parsed.map((item, index) => {
-    if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      throw new Error(`CaseClassifier: result at index ${index} is not an object.`);
+  const sentIds = new Set(sentClauses.map((c) => c.id));
+
+  // First-write-wins: a duplicated clause_id keeps its FIRST occurrence.
+  const bySentId = new Map<string, Selection>();
+  let unknownIds = 0;
+  let duplicateIds = 0;
+  let malformed = 0;
+
+  for (const item of rawResults) {
+    const sel = parseSelection(item);
+    if (sel === null) {
+      malformed += 1;
+      continue;
     }
-    const obj = item as Record<string, unknown>;
-    const clause_id = obj.clause_id;
-    if (typeof clause_id !== "string" || clause_id.trim().length === 0) {
-      throw new Error(`CaseClassifier: result at index ${index} has a missing/invalid "clause_id".`);
+    if (!sentIds.has(sel.clause_id)) {
+      unknownIds += 1;
+      continue;
     }
-    const rawCases = obj.cases;
-    if (!Array.isArray(rawCases)) {
-      throw new Error(`CaseClassifier: clause "${clause_id}" has a non-array "cases".`);
+    if (bySentId.has(sel.clause_id)) {
+      duplicateIds += 1;
+      continue;
     }
-    // Skip (don't throw on) individual malformed case entries — real model output
-    // occasionally emits a junk entry, and one bad case must not abort the whole run.
-    // A clause may legitimately end up with zero matched cases. Only the surrounding
-    // JSON/array shape is fatal (validated above). Candidate-membership is enforced
-    // in the reconstruction step, which likewise skips (never invents) unknown ids.
-    const cases: { case_id: string; confidence: number }[] = [];
-    for (const c of rawCases) {
-      if (typeof c !== "object" || c === null || Array.isArray(c)) {
-        console.warn(
-          `CaseClassifier: clause "${clause_id}" — skipping a non-object case entry: ${JSON.stringify(c)}`,
-        );
-        continue;
+    bySentId.set(sel.clause_id, sel);
+  }
+
+  // Catastrophic only: nothing at all survived, so the model returned nothing usable.
+  if (bySentId.size === 0) {
+    throw new Error(
+      `CaseClassifier: no usable clause results survived reconciliation — ` +
+        `${rawResults.length} entries returned for ${sentClauses.length} sent clauses ` +
+        `(${unknownIds} unknown clause_id, ${malformed} malformed). ` +
+        `The model returned nothing that could be matched to a sent clause.`,
+    );
+  }
+
+  const unmatched = sentClauses.length - bySentId.size;
+  if (
+    unknownIds > 0 ||
+    duplicateIds > 0 ||
+    malformed > 0 ||
+    unmatched > 0 ||
+    rawResults.length !== sentClauses.length
+  ) {
+    // Counts ONLY — never clause text, never prompts.
+    console.warn(
+      `CaseClassifier: reconciled ${rawResults.length} results -> ${sentClauses.length} clauses ` +
+        `(dropped ${unknownIds} unknown id, ${duplicateIds} duplicate id, ` +
+        `${malformed} malformed, ${unmatched} clauses unmatched)`,
+    );
+  }
+
+  return sentClauses.map((clause, i) => {
+    const sel = bySentId.get(clause.id);
+    const map = candidateMaps[i];
+    const cases: MatchedCase[] = [];
+
+    if (sel && map) {
+      for (const chosen of sel.cases) {
+        const cand = map.get(chosen.case_id);
+        if (!cand) {
+          // Not among this clause's Pinecone candidates → skip it. This upholds the
+          // "never invent a case_id" guarantee (a skipped entry is dropped, never
+          // fabricated) without aborting the whole run over one bad entry.
+          console.warn(
+            `CaseClassifier: clause "${clause.id}" — skipping case_id "${chosen.case_id}", not among its candidates ${JSON.stringify([...map.keys()])} (no invented cases).`,
+          );
+          continue;
+        }
+        cases.push({
+          case_id: cand.case_id,
+          title: cand.title,
+          classification: toClassification(cand.classification, cand.case_id),
+          weight: cand.weight,
+          topic: cand.topic,
+          confidence: chosen.confidence,
+        });
       }
-      const co = c as Record<string, unknown>;
-      // ToS;DR case_ids are numeric-looking, so the model may echo them as JSON
-      // numbers rather than strings — coerce to string (as VersionDiffer does)
-      // instead of dropping an otherwise well-formed entry.
-      const case_id =
-        typeof co.case_id === "string"
-          ? co.case_id.trim()
-          : typeof co.case_id === "number" && Number.isFinite(co.case_id)
-            ? String(co.case_id)
-            : "";
-      if (case_id.length === 0) {
-        console.warn(
-          `CaseClassifier: clause "${clause_id}" — skipping a case entry with a missing/empty "case_id".`,
-        );
-        continue;
-      }
-      const confidence = typeof co.confidence === "number" ? co.confidence : Number(co.confidence);
-      if (!Number.isFinite(confidence)) {
-        console.warn(
-          `CaseClassifier: clause "${clause_id}", case "${case_id}" — skipping: non-numeric "confidence".`,
-        );
-        continue;
-      }
-      cases.push({ case_id, confidence: clamp01(confidence) });
     }
-    return { clause_id: clause_id.trim(), cases };
+
+    return { clause_id: clause.id, clause_text: clause.text, cases };
   });
+}
+
+/**
+ * Parse ONE returned result into a Selection, or null when it is unusable. Returns
+ * null instead of throwing: a single junk entry must never abort a run that produced
+ * 150 good ones — reconciliation drops it and the clause falls through to `cases: []`.
+ */
+function parseSelection(item: unknown): Selection | null {
+  if (typeof item !== "object" || item === null || Array.isArray(item)) return null;
+  const obj = item as Record<string, unknown>;
+
+  // Clause ids may be echoed as JSON numbers — coerce rather than drop.
+  const rawId = obj.clause_id;
+  const clause_id =
+    typeof rawId === "string"
+      ? rawId.trim()
+      : typeof rawId === "number" && Number.isFinite(rawId)
+        ? String(rawId)
+        : "";
+  if (clause_id.length === 0) return null;
+
+  // A non-array "cases" makes this entry unusable; the clause still gets `cases: []`
+  // via the unmatched path, so the run continues either way.
+  const rawCases = obj.cases;
+  if (!Array.isArray(rawCases)) return null;
+
+  // Skip (don't drop the whole entry over) individual malformed case entries — real
+  // model output occasionally emits a junk entry, and a clause may legitimately end up
+  // with zero matched cases.
+  const cases: { case_id: string; confidence: number }[] = [];
+  for (const c of rawCases) {
+    if (typeof c !== "object" || c === null || Array.isArray(c)) {
+      console.warn(
+        `CaseClassifier: clause "${clause_id}" — skipping a non-object case entry.`,
+      );
+      continue;
+    }
+    const co = c as Record<string, unknown>;
+    // ToS;DR case_ids are numeric-looking, so the model may echo them as JSON
+    // numbers rather than strings — coerce to string (as VersionDiffer does)
+    // instead of dropping an otherwise well-formed entry.
+    const case_id =
+      typeof co.case_id === "string"
+        ? co.case_id.trim()
+        : typeof co.case_id === "number" && Number.isFinite(co.case_id)
+          ? String(co.case_id)
+          : "";
+    if (case_id.length === 0) {
+      console.warn(
+        `CaseClassifier: clause "${clause_id}" — skipping a case entry with a missing/empty "case_id".`,
+      );
+      continue;
+    }
+    const confidence = typeof co.confidence === "number" ? co.confidence : Number(co.confidence);
+    if (!Number.isFinite(confidence)) {
+      console.warn(
+        `CaseClassifier: clause "${clause_id}", case "${case_id}" — skipping: non-numeric "confidence".`,
+      );
+      continue;
+    }
+    cases.push({ case_id, confidence: clamp01(confidence) });
+  }
+  return { clause_id, cases };
 }
 
 function clamp01(n: number): number {
