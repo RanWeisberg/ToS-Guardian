@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200" role="img" aria-label="ToS Guardian">
+  <title>ToS Guardian</title>
+  <path fill="#0F9E8F" d="M100 14c20 0 48 8 66 16 7 3 12 10 12 18v48c0 44-32 76-78 92-46-16-78-48-78-92V48c0-8 5-15 12-18 18-8 46-16 66-16Z"/>
+  <path fill="#FAF9F7" d="M100 46c14 0 33 6 45 11 5 2 8 6 8 11v28c0 30-21 52-53 64V46Z"/>
+  <text x="214" y="118" font-family="Manrope, ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="62" font-weight="700" letter-spacing="-1.5" fill="#0F9E8F">ToS</text>
+  <text x="348" y="118" font-family="Manrope, ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="62" font-weight="500" letter-spacing="-1.5" fill="#1C1B19">Guardian</text>
+</svg>
