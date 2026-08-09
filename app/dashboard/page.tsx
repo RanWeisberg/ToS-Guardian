@@ -100,7 +100,7 @@ export default async function DashboardPage() {
                 Add your first service to get started — paste an agreement and
                 I&apos;ll tell you what matters.
               </p>
-              <Link href="/add-agreement" className={styles.emptyBtn}>
+              <Link href="/" className={styles.emptyBtn}>
                 Add your first service
               </Link>
             </div>

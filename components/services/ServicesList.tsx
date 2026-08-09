@@ -75,7 +75,7 @@ export default function ServicesList({ services }: { services: ServiceRow[] }) {
           <p className={styles.emptyText}>
             Add your first service to start watching its terms.
           </p>
-          <Link href="/add-agreement" className={styles.emptyBtn}>
+          <Link href="/" className={styles.emptyBtn}>
             Add your first service
           </Link>
         </div>

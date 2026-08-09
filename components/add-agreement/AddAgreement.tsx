@@ -3,21 +3,30 @@
 /**
  * components/add-agreement/AddAgreement.tsx
  *
- * The add-agreement / execute screen (PROJECT_SPEC.md §7 Tab 4 — "doubles as the
- * graded bare interface"): paste an agreement, name the service (the agent infers
- * the category itself — there is NO category field), hit "Review it for me", and
- * watch the agent work through it as an ordered, friendly step list.
+ * The agent GUI, rendered at the ROOT url (app/page.tsx) — the graded bare
+ * interface: a prompt textarea, a Run Agent button that POSTs to /api/execute, the
+ * final `response`, and the FULL steps trace. Paste an agreement, optionally name
+ * the service (the agent infers the category itself — there is NO category field),
+ * hit Run Agent, and watch the agent work through it.
  *
- * Phase 7 Step B: WIRED to the real POST /api/execute. On submit it frames the
- * input as an onboarding request, calls the endpoint, and renders the REAL
- * `steps` trace and REAL `response` that come back. The sample data (passed as
- * props) is only the initial-state display before the first live run.
+ * WIRED to the real POST /api/execute: on submit it composes the outgoing prompt,
+ * calls the endpoint, and renders the REAL `steps` trace and REAL `response` that
+ * come back. The sample data (passed as props) is only the initial-state display
+ * before the first live run.
  *
- * IMPORTANT (grading requirement, CLAUDE.md §3): the UI shows FRIENDLY labels, but
- * every step's real frozen module name (`step.module`) stays untouched in the data
- * so the graded trace view keeps it. The friendly label is a *display* lookup
- * (MODULE_LABELS) keyed by the real ModuleName — the real name is never replaced
- * anywhere in the data.
+ * COMPOSED PROMPT (two paths):
+ *   - service non-empty → the published framing from /api/agent_info's
+ *     prompt_template, byte for byte;
+ *   - service empty     → the textarea contents VERBATIM, no wrapper, no trimming,
+ *     no normalisation — so a grader can paste an arbitrary prompt and have exactly
+ *     that string reach the endpoint.
+ *
+ * IMPORTANT (grading requirement, CLAUDE.md §3): the friendly step list shows
+ * FRIENDLY labels, but every step's real frozen module name (`step.module`) stays
+ * untouched in the data — and the RAW TRACE BOX above it prints that real name
+ * verbatim, alongside both prompts and the response JSON. The friendly label is a
+ * *display* lookup (MODULE_LABELS) keyed by the real ModuleName; the real name is
+ * never replaced anywhere in the data.
  */
 
 import { useState } from "react";
@@ -120,14 +129,16 @@ export default function AddAgreement({
   // context so they SURVIVE navigating to a report and back (the page unmounts;
   // the context, mounted in the root layout, does not). All cleared together only
   // after a report is fully answered.
-  // TOKEN-SAVING GUARD (lastSubmitted): the exact agreement text last SUBMITTED to
-  // /api/execute. It lives in context too, so an already-reviewed agreement stays
+  // TOKEN-SAVING GUARD (lastSubmitted): the exact COMPOSED PROMPT last SUBMITTED to
+  // /api/execute. It lives in context too, so an already-reviewed prompt stays
   // guarded across navigation; clearDraft() (full answer) re-enables a fresh run.
   const {
     service,
     agreement,
     setService,
     setAgreement,
+    demoDismissed,
+    dismissDemo,
     runResult,
     setRunResult,
     lastSubmitted,
@@ -147,39 +158,65 @@ export default function AddAgreement({
   const response = runResult?.response ?? null;
   const loading = runState === "loading";
 
-  // Already reviewed this exact agreement → block re-submitting it (budget).
+  // --- The composed prompt: EXACTLY what gets POSTed to /api/execute ----------
+  // Service named  → the framing published by /api/agent_info's prompt_template,
+  //                  byte for byte.
+  // Service empty  → the textarea contents VERBATIM. No trim, no wrapper, no
+  //                  normalisation: a pasted arbitrary prompt arrives untouched.
+  const svc = service.trim();
+  const composedPrompt = svc
+    ? `I'm signing up for ${svc}. Here is the agreement I'm being asked to accept:\n\n${agreement.trim()}`
+    : agreement;
+
+  // Only an empty agreement blocks a run — the service field is optional.
+  const agreementEmpty = agreement.trim() === "";
+
+  // Already reviewed this exact composed prompt → block re-submitting it (budget).
+  // Because the guard is on the COMPOSED prompt, editing EITHER field (or clearing)
+  // re-enables the button automatically.
   const alreadyReviewed =
-    lastSubmitted !== null && agreement.trim() === lastSubmitted;
+    lastSubmitted !== null && composedPrompt === lastSubmitted;
   const runDisabled = loading || alreadyReviewed;
 
-  async function handleReview() {
-    const svc = service.trim();
-    const text = agreement.trim();
+  /** First manual keystroke in the textarea = departure from the demo state → the
+   *  service field auto-clears ONCE. After that it is fully user-owned. */
+  function handleAgreementChange(value: string) {
+    if (!demoDismissed) {
+      setService("");
+      dismissDemo();
+    }
+    setAgreement(value);
+    if (validationHint) setValidationHint(null);
+  }
 
-    // Empty input: gently prompt rather than calling the API.
-    if (!svc || !text) {
-      setValidationHint(
-        !svc && !text
-          ? "Add the service name and paste the agreement, and I'll take a look."
-          : !svc
-            ? "What service is this agreement for? Add its name and I'll review it."
-            : "Paste the agreement text and I'll review it for you.",
-      );
+  /** Clear: empty BOTH fields, latch the demo flag, and drop the re-run guard.
+   *  Deliberately leaves `runResult` alone — the response block and the trace box
+   *  stay on screen after clearing. */
+  function handleClear() {
+    setService("");
+    setAgreement("");
+    dismissDemo();
+    setLastSubmitted(null);
+    setValidationHint(null);
+  }
+
+  async function handleReview() {
+    // Empty agreement: gently prompt rather than calling the API. A missing service
+    // name is fine — that's the verbatim path.
+    if (agreementEmpty) {
+      setValidationHint("Paste the agreement text and I'll review it for you.");
       return;
     }
 
-    // Guard: don't re-run the identical agreement (belt-and-braces with runDisabled).
+    // Guard: don't re-run the identical prompt (belt-and-braces with runDisabled).
     if (alreadyReviewed) return;
 
     setValidationHint(null);
     setErrorMessage(null);
     setRunState("loading");
 
-    // Frame the input as an onboarding request. No category — the agent infers it.
-    const prompt = `I'm signing up for ${svc}. Here is the agreement I'm being asked to accept:\n\n${text}`;
-
     try {
-      const { data, reportId: newReportId } = await runExecute(prompt);
+      const { data, reportId: newReportId } = await runExecute(composedPrompt);
       if (data.status === "ok") {
         // Persist the run result to context so it survives navigation.
         setRunResult({
@@ -187,9 +224,9 @@ export default function AddAgreement({
           response: data.response,
           reportId: newReportId,
         });
-        // Remember what we just reviewed → keep the run button disabled until the
-        // agreement text changes. Only on success (errors stay retryable).
-        setLastSubmitted(text);
+        // Remember the exact prompt we just sent → keep the run button disabled
+        // until it changes. Only on success (errors stay retryable).
+        setLastSubmitted(composedPrompt);
         setRunState("initial");
       } else {
         setErrorMessage(
@@ -227,20 +264,17 @@ export default function AddAgreement({
             className={styles.textarea}
             placeholder="Paste a terms-of-service or privacy policy here…"
             value={agreement}
-            onChange={(e) => {
-              setAgreement(e.target.value);
-              if (validationHint) setValidationHint(null);
-            }}
+            onChange={(e) => handleAgreementChange(e.target.value)}
           />
 
           <div className={styles.field}>
             <label className={styles.label} htmlFor="service">
-              Service
+              Service <span className={styles.labelOptional}>(optional)</span>
             </label>
             <input
               id="service"
               className={styles.input}
-              placeholder="e.g. Acme Cloud"
+              placeholder="e.g. Acme Cloud — leave empty to send the text as-is"
               value={service}
               onChange={(e) => {
                 setService(e.target.value);
@@ -249,20 +283,31 @@ export default function AddAgreement({
             />
           </div>
 
-          <button
-            type="button"
-            className={styles.primaryBtn}
-            onClick={handleReview}
-            disabled={runDisabled}
-          >
-            {loading ? "Reviewing…" : "Review it for me"}
-          </button>
+          {/* The one horizontal pair the layout allows: the two action buttons. */}
+          <div className={styles.buttonRow}>
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              onClick={handleReview}
+              disabled={runDisabled}
+            >
+              {loading ? "Running agent…" : "Run Agent (Review it for me)"}
+            </button>
+            <button
+              type="button"
+              className={styles.clearBtn}
+              onClick={handleClear}
+            >
+              Clear
+            </button>
+          </div>
 
           {validationHint ? (
             <p className={styles.hintNotice}>{validationHint}</p>
           ) : alreadyReviewed ? (
+            // On-screen (not a tooltip) explanation of the disabled Run button.
             <p className={styles.hintNotice}>
-              Already reviewed — edit the agreement to run again.
+              Already reviewed — clear or edit the text to run again.
             </p>
           ) : (
             <p className={styles.reassurance}>
@@ -270,6 +315,15 @@ export default function AddAgreement({
             </p>
           )}
         </div>
+
+        {/* The final `response` from /api/execute, between the buttons and the
+            trace box. Plain readable text. */}
+        {showingLive && response && (
+          <div className={`${styles.card} ${styles.responseCard}`}>
+            <h2 className={styles.cardHeading}>Response</h2>
+            <div className={styles.responseText}>{response}</div>
+          </div>
+        )}
 
         {/* Progress / trace */}
         <div className={`${styles.card} ${styles.progressCard}`}>
@@ -296,12 +350,35 @@ export default function AddAgreement({
             </div>
           ) : displaySteps.length === 0 ? (
             <div className={styles.hintBody}>
-              Paste an agreement and name the service, then hit{" "}
-              <strong>Review it for me</strong> — I&apos;ll show my work here, step by
-              step.
+              Paste an agreement, then hit <strong>Run Agent</strong> — I&apos;ll show
+              my work here, step by step.
             </div>
           ) : (
             <>
+              {/* RAW STEPS TRACE — deliberately ABOVE the friendly list, for
+                  grading visibility. Prints the REAL frozen module name verbatim
+                  (never MODULE_LABELS / describeStep), both full prompts, and the
+                  response JSON, for every step in order. */}
+              <div className={styles.rawTraceLabel}>Raw steps trace</div>
+              <div className={styles.rawTrace}>
+                {displaySteps.map((step, i) => (
+                  <div className={styles.rawStep} key={`raw-${step.module}-${i}`}>
+                    <div className={styles.rawStepHead}>
+                      <span className={styles.rawStepNum}>{i + 1}</span>
+                      <span className={styles.rawModule}>{step.module}</span>
+                    </div>
+                    <div className={styles.rawKey}>system_prompt</div>
+                    <pre className={styles.rawPre}>{step.prompt.system_prompt}</pre>
+                    <div className={styles.rawKey}>user_prompt</div>
+                    <pre className={styles.rawPre}>{step.prompt.user_prompt}</pre>
+                    <div className={styles.rawKey}>response</div>
+                    <pre className={styles.rawPre}>
+                      {JSON.stringify(step.response, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+
               <div className={styles.steps}>
                 {displaySteps.map((step, i) => (
                   <div className={styles.step} key={`${step.module}-${i}`}>
@@ -317,13 +394,6 @@ export default function AddAgreement({
                   </div>
                 ))}
               </div>
-
-              {showingLive && response && (
-                <div className={styles.responseBox}>
-                  <div className={styles.responseLabel}>Here&apos;s what I found</div>
-                  <div className={styles.responseText}>{response}</div>
-                </div>
-              )}
 
               <div className={styles.divider} />
 

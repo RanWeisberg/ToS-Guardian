@@ -10,7 +10,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AgreementDraftProvider } from "@/components/add-agreement/agreementDraftContext";
-import { SAMPLE_SERVICE, SAMPLE_AGREEMENT } from "@/components/add-agreement/sampleRun";
+import { DEMO_SERVICE, DEMO_AGREEMENT } from "@/lib/demoAgreement";
 
 export const metadata: Metadata = {
   title: "ToS Guardian",
@@ -39,8 +39,8 @@ export default function RootLayout({
       </head>
       <body>
         <AgreementDraftProvider
-          initialService={SAMPLE_SERVICE}
-          initialAgreement={SAMPLE_AGREEMENT}
+          initialService={DEMO_SERVICE}
+          initialAgreement={DEMO_AGREEMENT}
         >
           {children}
         </AgreementDraftProvider>

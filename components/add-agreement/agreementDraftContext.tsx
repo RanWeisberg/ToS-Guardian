@@ -11,11 +11,18 @@
  *
  * It holds:
  *   - the DRAFT: the service name + pasted agreement text;
+ *   - the one-way DEMO flag (`demoDismissed`): the screen opens pre-filled with the
+ *     demo agreement (lib/demoAgreement.ts). The service field auto-clears EXACTLY
+ *     ONCE, on first departure from that demo state — the first manual keystroke in
+ *     the textarea, or Clear. This flag records that it has happened, so the service
+ *     field is user-owned from then on and never auto-clears again;
  *   - the last completed live run's RESULT (steps trace, response line, reportId),
  *     so the trace + result are restored on return rather than reset to the sample
  *     view (`runResult === null` means no live run has completed yet); and
- *   - the token-saving run GUARD (`lastSubmitted`): the exact agreement text last
- *     submitted, so an already-reviewed agreement stays guarded across navigation.
+ *   - the token-saving run GUARD (`lastSubmitted`): the exact COMPOSED PROMPT last
+ *     sent to /api/execute, so an already-reviewed prompt stays guarded across
+ *     navigation. Editing either field changes the composed prompt and re-enables
+ *     the run automatically.
  *
  * clearDraft() resets ALL of the above. It is called only when a report has been
  * fully answered (see app/report/[id]/ReportView.tsx). A partial answer, a plain
@@ -40,11 +47,16 @@ interface AgreementDraft {
   agreement: string;
   setService: (value: string) => void;
   setAgreement: (value: string) => void;
+  /** True once the draft has left its initial demo state. One-way: never resets. */
+  demoDismissed: boolean;
+  /** Mark the demo state as departed. Idempotent and irreversible — after the first
+   *  call the service field is fully user-owned and must never auto-clear again. */
+  dismissDemo: () => void;
   /** The last completed live run's result, or null when none has completed. */
   runResult: RunResult | null;
   setRunResult: (result: RunResult | null) => void;
-  /** Token-saving guard: the exact agreement text last submitted to /api/execute,
-   *  or null when nothing has been submitted yet. */
+  /** Token-saving guard: the exact COMPOSED PROMPT last sent to /api/execute, or
+   *  null when nothing has been submitted yet. */
   lastSubmitted: string | null;
   setLastSubmitted: (value: string | null) => void;
   /** Reset the draft, the persisted run result, AND the guard (used only after a
@@ -65,12 +77,20 @@ export function AgreementDraftProvider({
 }) {
   const [service, setService] = useState(initialService);
   const [agreement, setAgreement] = useState(initialAgreement);
+  const [demoDismissed, setDemoDismissed] = useState(false);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [lastSubmitted, setLastSubmitted] = useState<string | null>(null);
+
+  /** One-way latch — only ever flips false → true. */
+  function dismissDemo() {
+    setDemoDismissed(true);
+  }
 
   function clearDraft() {
     setService("");
     setAgreement("");
+    // The fields are empty, so the draft has certainly left the demo state.
+    setDemoDismissed(true);
     setRunResult(null);
     setLastSubmitted(null);
   }
@@ -82,6 +102,8 @@ export function AgreementDraftProvider({
         agreement,
         setService,
         setAgreement,
+        demoDismissed,
+        dismissDemo,
         runResult,
         setRunResult,
         lastSubmitted,

@@ -57,7 +57,7 @@ export default function ActivityLog({ items }: { items: ActivityItem[] }) {
           <p className={styles.emptyText}>
             Reviewed agreements will show up here — add your first service to get started.
           </p>
-          <Link href="/add-agreement" className={styles.emptyBtn}>
+          <Link href="/" className={styles.emptyBtn}>
             Add your first service
           </Link>
         </div>

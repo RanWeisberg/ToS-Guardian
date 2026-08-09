@@ -7,7 +7,7 @@
  * data in; this thin client boundary supplies the router-based navigation
  * callbacks that <ReportDetail /> needs, inside the shared <AppShell />, and owns
  * the feedback network call (Phase 7 Step D): on submit it POSTs to /api/feedback
- * via submitFeedback; on success it navigates back to /add-agreement, and on
+ * via submitFeedback; on success it navigates back to the agent GUI at "/", and on
  * failure it surfaces the error inline instead of navigating.
  *
  * Pre-fill: `savedStances` (the user's already-saved answers) seeds <ReportDetail />
@@ -53,7 +53,7 @@ export default function ReportView({
       // Fully answered → the pasted agreement is done with; clear the held draft.
       // A partial answer leaves it untouched.
       if (result.answered) clearDraft();
-      router.push("/add-agreement");
+      router.push("/");
     } else {
       setError(
         result.error ?? "Sorry — I couldn't save your answers. Please try again.",
@@ -87,8 +87,8 @@ export default function ReportView({
         truncationNotice={truncationNotice}
         feedback={savedStances}
         onSubmitFeedback={handleSubmit}
-        onBack={() => router.push("/add-agreement")}
-        onDone={() => router.push("/add-agreement")}
+        onBack={() => router.push("/")}
+        onDone={() => router.push("/")}
       />
     </AppShell>
   );

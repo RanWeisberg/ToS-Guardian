@@ -5,7 +5,7 @@
  *
  * Step A (shell only): renders the existing <ReportDetail /> with its
  * sampleReport placeholder data inside the shared <AppShell />. Reached from the
- * add-agreement screen's "See what I found →"; Back / "Back to agreement" return
+ * agent GUI's "See what I found →" at "/"; Back / "Back to agreement" return
  * there. No live data or feedback-writing yet.
  */
 
@@ -20,8 +20,8 @@ export default function ReportPage() {
     <AppShell>
       <ReportDetail
         {...sampleReport}
-        onBack={() => router.push("/add-agreement")}
-        onDone={() => router.push("/add-agreement")}
+        onBack={() => router.push("/")}
+        onDone={() => router.push("/")}
       />
     </AppShell>
   );

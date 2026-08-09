@@ -28,7 +28,7 @@ const TABS = [
   { href: "/preferences", label: "Preferences" },
   { href: "/activity-log", label: "Activity Log" },
   { href: "/services", label: "Services" },
-  { href: "/add-agreement", label: "Add agreement" },
+  { href: "/", label: "Add agreement" },
 ] as const;
 
 /** The header button's flow: idle → peeking (free) → processing (agent) → idle. */
