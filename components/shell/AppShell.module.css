@@ -25,26 +25,14 @@
   gap: 11px;
 }
 
+/* The shield mark (/logo.svg). Sizing only — the artwork carries its own colour
+ * and shape, so the old decorative rules (teal fill, shield border-radius, glow)
+ * and the flex-centering that positioned the removed .logoRing are all gone.
+ * The 11px gap to the wordmark and the vertical centering come from .brand. */
 .logo {
   width: 30px;
   height: 34px;
-  background: #0f9e8f;
-  border-radius: 8px 8px 13px 13px / 8px 8px 16px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(15, 158, 143, 0.28);
-}
-
-.logoRing {
-  width: 11px;
-  height: 11px;
-  border: 2.5px solid #faf9f7;
-  border-radius: 50%;
-  border-top-color: transparent;
-  border-right-color: transparent;
-  transform: rotate(-45deg);
-  margin-top: -2px;
+  flex-shrink: 0;
 }
 
 .brandName {

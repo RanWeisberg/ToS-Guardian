@@ -126,9 +126,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <header className={styles.topbar}>
         <div className={styles.bar}>
           <div className={styles.brand}>
-            <div className={styles.logo}>
-              <div className={styles.logoRing} />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element -- a static SVG
+                gains nothing from next/image, and a plain <img> keeps the flex row
+                intact. alt="" is deliberate: the adjacent wordmark names the brand. */}
+            <img className={styles.logo} src="/logo.svg" alt="" />
             <span className={styles.brandName}>ToS Guardian</span>
           </div>
 
