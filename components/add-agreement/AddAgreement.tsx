@@ -21,6 +21,17 @@
  *     no normalisation — so a grader can paste an arbitrary prompt and have exactly
  *     that string reach the endpoint.
  *
+ * RUN BUTTON — THREE MODES (one control, no second button at the foot of the page):
+ *   - in flight            → "Running agent…", disabled;
+ *   - run done + reportId  → "Review the results →", ENABLED, navigates to the
+ *                            persisted report via onSeeResults(reportId);
+ *   - otherwise            → "Run Agent (Review it for me)", enabled, runs.
+ * It stays in the "Review the results" mode until the composed prompt changes
+ * (edit either field, or Clear), which returns it to run mode — the same
+ * token-saving guard as before, now expressed as navigation instead of a
+ * greyed-out dead end. A finished run that persisted NO report keeps the old
+ * disabled treatment, since there is nowhere to navigate to.
+ *
  * IMPORTANT (grading requirement, CLAUDE.md §3): the friendly step list shows
  * FRIENDLY labels, but every step's real frozen module name (`step.module`) stays
  * untouched in the data — and the RAW TRACE BOX above it prints that real name
@@ -176,7 +187,14 @@ export default function AddAgreement({
   // re-enables the button automatically.
   const alreadyReviewed =
     lastSubmitted !== null && composedPrompt === lastSubmitted;
-  const runDisabled = loading || alreadyReviewed;
+
+  // The reviewed prompt produced a persisted report → the Run button becomes the
+  // way INTO that report rather than a dead greyed-out control.
+  const canViewResults = alreadyReviewed && reportId !== null;
+
+  // Disabled only while in flight, or when a finished run persisted no report at
+  // all (nothing to re-run, nowhere to navigate) — the old greyed treatment.
+  const runDisabled = loading || (alreadyReviewed && !canViewResults);
 
   /** First manual keystroke in the textarea = departure from the demo state → the
    *  service field auto-clears ONCE. After that it is fully user-owned. */
@@ -198,6 +216,16 @@ export default function AddAgreement({
     dismissDemo();
     setLastSubmitted(null);
     setValidationHint(null);
+  }
+
+  /** The Run button's click target depends on its mode: navigate to the finished
+   *  report when there is one, otherwise start a run. */
+  function handlePrimaryClick() {
+    if (canViewResults && reportId) {
+      onSeeResults?.(reportId);
+      return;
+    }
+    void handleReview();
   }
 
   async function handleReview() {
@@ -288,10 +316,14 @@ export default function AddAgreement({
             <button
               type="button"
               className={styles.primaryBtn}
-              onClick={handleReview}
+              onClick={handlePrimaryClick}
               disabled={runDisabled}
             >
-              {loading ? "Running agent…" : "Run Agent (Review it for me)"}
+              {loading
+                ? "Running agent…"
+                : canViewResults
+                  ? "Review the results →"
+                  : "Run Agent (Review it for me)"}
             </button>
             <button
               type="button"
@@ -304,6 +336,12 @@ export default function AddAgreement({
 
           {validationHint ? (
             <p className={styles.hintNotice}>{validationHint}</p>
+          ) : canViewResults ? (
+            // The Run button is now the way into the finished report; say how to
+            // get back to a fresh run.
+            <p className={styles.reassurance}>
+              Your report is ready — clear or edit the text to review something new.
+            </p>
           ) : alreadyReviewed ? (
             // On-screen (not a tooltip) explanation of the disabled Run button.
             <p className={styles.hintNotice}>
@@ -397,23 +435,14 @@ export default function AddAgreement({
 
               <div className={styles.divider} />
 
+              {/* Status only. The way into the report is the Run button up top,
+                  which turns into "Review the results →" once a run completes. */}
               <div className={styles.footer}>
                 <span className={styles.footerStatus}>
                   {isDone
                     ? `Done — ${count(displaySteps.length, "step", "steps")}`
                     : "Working through it…"}
                 </span>
-                {isDone && (
-                  <button
-                    type="button"
-                    className={`${styles.seeBtn} ${reportId ? "" : styles.seeBtnDisabled}`}
-                    onClick={() => reportId && onSeeResults?.(reportId)}
-                    disabled={!reportId}
-                    title={reportId ? undefined : "Run a review to see the full report"}
-                  >
-                    See what I found →
-                  </button>
-                )}
               </div>
             </>
           )}
