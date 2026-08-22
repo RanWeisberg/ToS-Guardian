@@ -23,6 +23,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import styles from "./AppShell.module.css";
 
+/** The demo Gmail account was suspended by Google, so the live mail check
+ *  cannot run. The mail pipeline itself (mail_peek → mail_check → runAgent)
+ *  is unchanged and fully functional — only the button's trigger is gated. */
+const MAIL_CHECK_DISABLED = true;
+
 const TABS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/preferences", label: "Preferences" },
@@ -58,6 +63,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [banner, setBanner] = useState<{ count: number } | null>(null);
   const [noNew, setNoNew] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMailNotice, setShowMailNotice] = useState(false);
 
   // "No new mail" is a transient micro-note — auto-clear after ~4s.
   useEffect(() => {
@@ -65,6 +71,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const t = setTimeout(() => setNoNew(false), 4000);
     return () => clearTimeout(t);
   }, [noNew]);
+
+  // Escape closes the "mail check unavailable" overlay.
+  useEffect(() => {
+    if (!showMailNotice) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowMailNotice(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showMailNotice]);
 
   async function checkMail() {
     setError(null);
@@ -144,7 +160,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               className={styles.checkBtn}
-              onClick={checkMail}
+              onClick={MAIL_CHECK_DISABLED ? () => setShowMailNotice(true) : checkMail}
               disabled={busy}
             >
               {buttonLabel}
@@ -197,6 +213,45 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       {children}
+
+      {showMailNotice && (
+        <div
+          className={styles.noticeBackdrop}
+          onClick={() => setShowMailNotice(false)}
+          role="presentation"
+        >
+          <div
+            className={styles.noticeCard}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mail-notice-title"
+          >
+            <button
+              type="button"
+              className={styles.noticeClose}
+              onClick={() => setShowMailNotice(false)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <h2 id="mail-notice-title" className={styles.noticeTitle}>
+              Mail check unavailable
+            </h2>
+            <p className={styles.noticeText}>
+              Google suspended the dedicated demo mailbox this agent monitored, and its
+              policies do not permit issuing Gmail API access to non-personal or shared
+              demo accounts.
+            </p>
+            <p className={styles.noticeText}>
+              The mail monitoring feature itself is fully implemented and working — the
+              /api/mail_peek and /api/mail_check routes, the Gmail MailSource, and the
+              dedup ledger are all intact. Only the live inbox connection is unavailable.
+              Use &lsquo;Add agreement&rsquo; to run the agent directly.
+            </p>
+          </div>
+        </div>
+      )}
     </>
   );
 }

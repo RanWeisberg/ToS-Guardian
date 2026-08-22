@@ -184,6 +184,75 @@
   color: #0a6f64;
 }
 
+/* ---- "Mail check unavailable" notice overlay ------------------------ */
+
+/* Sits above the header (which is in normal flow, so any positive z-index on a
+ * fixed layer wins) and dims the app behind the card. */
+.noticeBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(27, 27, 26, 0.42);
+}
+
+.noticeCard {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 18px 48px rgba(27, 27, 26, 0.22);
+}
+
+.noticeClose {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  border: none;
+  background: transparent;
+  color: #8a897f;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 100px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.noticeClose:hover {
+  color: #1b1b1a;
+  background: #faf9f7;
+}
+
+.noticeTitle {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: #1b1b1a;
+  margin: 0 32px 12px 0;
+}
+
+.noticeText {
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #57564f;
+  margin: 0 0 12px;
+}
+
+.noticeText:last-child {
+  margin-bottom: 0;
+  padding: 12px 14px;
+  background: #faf9f7;
+  border-radius: 14px;
+  border-left: 3px solid #0f9e8f;
+}
+
 /* ---- Nav tabs (own horizontal band) --------------------------------- */
 
 .tabs {
